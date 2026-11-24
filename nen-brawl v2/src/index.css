@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #000;
+}
+
+@keyframes pop {
+  0% {
+    scale: 2;
+    opacity: 0;
+  }
+  60% {
+    scale: 0.95;
+    opacity: 1;
+  }
+  100% {
+    scale: 1;
+  }
+}
