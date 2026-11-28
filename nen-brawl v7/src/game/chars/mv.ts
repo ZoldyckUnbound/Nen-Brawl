@@ -1,6 +1,6 @@
 /**
  * Moveset toolkit – the building blocks every reworked hunter kit is made of.
- * Each helper mirrors a Blox-Fruits move archetype (cone strike, dash-through, projectile fan, lingering field,
+ * Each helper is a Nen move archetype (cone strike, dash-through, projectile fan, lingering field,
  * mark & detonate, counter stance, blink, pull / push) so kits stay readable and balanced against each other.
  */
 import * as THREE from 'three';

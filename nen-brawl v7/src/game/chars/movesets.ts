@@ -11,7 +11,7 @@ import { sfx } from '../audio';
 const FACTORY: Record<PlayableKind, (old: CharDef) => Kit> = { gon, killua, leorio, kurapika, hisoka, morel, chrollo, netero, kite, knov, knuckle, pitou, zeno, gotoh, franklin, kastro, gido };
 
 const PASSIVE: Partial<Record<PlayableKind, string>> = {
-  gon: 'HUNT: every hit stacks Hunt on the target (max 5); at 5 stacks your next skill is a HUNT EXECUTION (+40%). Nen builds 3× slower: 60+ Nen powers up Jajanken (spends 20); a FULL meter unlocks Adult Gon (55 energy).',
+  gon: 'ENHANCEMENT: Jajanken needs no Nen – it is your body, not your aura. Landed hits and taken hits fill the meter; at 60+ your Jajanken is empowered. A FULL meter lets you offer everything to the covenant: Adult Gon.',
 };
 
 let applied = false;

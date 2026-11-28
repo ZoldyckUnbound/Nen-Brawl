@@ -10,9 +10,9 @@ const DK = 0x2fd05a;
 const WHT = 0xeaffdd;
 
 const full = (ch: number) => ch >= 0.98;
+/** Jajanken never spends Nen — a full aura simply means the fist is at its absolute ceiling. */
 function enhance(c: Fighter) {
   if (c.meter >= 99) {
-    c.meter -= 50;
     c.st.auraT = 1.2;
     return true;
   }
@@ -241,12 +241,11 @@ function adultTransform(g: Game, c: Fighter) {
   g.shake(0.5);
   for (let i = 0; i < 4; i++) g.after(0.25 + i * 0.25, c, () => g.fx.shockwave(grnd(c.pos), DK, 6 + i * 2, 0.5));
   g.after(0.6, c, () => {
-    g.setForm(c, 'adult', 30);
+    g.setForm(c, 'adult', 100);
     c.meter = 100;
-    c.speedMult = 1.22;
-    c.buffDmg = 1.3;
-    c.rangeMult = 1.25;
-    c.atkSpeed = 1.28;
+    c.speedMult = 1.3;
+    c.buffDmg = 1.34;
+    c.rangeMult = 1.3;
     g.fx.explosion(c.chestPos(), DK, 5, 0.5);
     g.shake(0.8);
     sfx('boom');
@@ -315,9 +314,9 @@ const NORMAL: SkillDef[] = [
     cast: (g, c, ch) => paper(g, c, ch, false),
   },
   {
-    key: 'V', name: 'Adult Gon: Restriction & Covenant', cost: 100, cd: 90, ai: [0, 30],
-    can: (_g, c) => !c.form,
-    desc: 'ULTIMATE (100 energy): sacrifice your potential — 30s adult form with more speed, range & power. Drains Nen; leaves you exhausted for 5s after.',
+    key: 'V', name: 'Adult Gon: Restriction & Covenant', cost: 0, cd: 55, ai: [0, 30],
+    can: (_g, c) => !c.form && c.meter >= 99,
+    desc: 'COVENANT (needs a FULL Nen meter): trade your future for the adult form — far more speed, reach and power. No timer: it burns Nen until you run dry, and every blow you land or take refills the meter. When it ends you are broken for 30 seconds.',
     cast: (g, c) => adultTransform(g, c),
   },
   {
@@ -371,22 +370,49 @@ export const GON: CharDef = {
   kind: 'gon', name: 'Gon', title: 'GON FREECSS', typ: 'Enhancement · Heavy brawler', color: GRN, css: '#8dff6a', hp: 440, speed: 10.2,
   blurb: 'Burst and close-to-mid range. Builds Nen from every exchange to power up Jajanken, then sacrifices his future for Adult Gon.',
   meter: { name: 'NEN', color: '#6dff5a', start: 0, max: 100 },
-  passive: { name: 'Nen Enhancement', desc: 'Landing hits (and taking damage, slightly less) builds Nen. At max Nen a green aura appears and Jajanken skills are enhanced (spends 50 Nen). Charging drains a bit of Nen.' },
-  gainHit: 0.55, gainHurt: 0.35, chargeDrain: 6,
+  passive: { name: 'Enhancement Awakening', desc: 'Jajanken never spends Nen. Every strike and every wound builds the NEN meter; at a full meter the fist is at its absolute ceiling. A full meter also unlocks the covenant: Adult Gon. In that form the meter is burnt continuously, but both dealing and receiving damage refill it. When the aura runs dry he is broken (slow, fragile, weaker) for 30 seconds.' },
+  gainHit: 0.62, gainHurt: 0.4,
+  holdForm: true, formGain: 1.35,
   skills: NORMAL, formSkills: ADULT, m1: M1_NORMAL, m1Air: M1_AIR, m1Form: M1_ADULT, m1Mode: 'charge', m1Range: 4.2,
   update(g, c, dt) {
+    // The covenant never runs on a clock: Adult Gon burns Nen for as long as he can hold it.
+    // Jajanken has taught his body to convert every exchange into aura — strikes AND wounds refill the meter,
+    // so the only true limit on the transformation is how much punishment he can keep trading for it.
     if (c.form === 'adult') {
-      c.meter -= (100 / 30) * dt;
+      const drain = 100 / 22;
+      c.meter = Math.max(0, c.meter - drain * dt);
+      c.formT = c.meter; c.formMax = 100;
+      if (Math.random() < dt * 14) g.fx.aura(c.chestPos(), 0x1fe05a, 1, 4.6 * c.scaleNow, 0.7);
+      if (c.meter < 18 && Math.random() < dt * 3) g.popup(c, 'AURA FADING', '#bfffa0', 16);
       if (c.meter <= 0) g.endForm(c);
     }
-    if (c.form === 'exhaust' && Math.random() < dt * 4) g.fx.smoke(c.chestPos(), 1, 0.5, 0x2a3a2a, 0.9, 0.8);
+    if (c.form === 'exhaust') {
+      c.formT = Math.max(0, c.formT);
+      if (Math.random() < dt * 5) g.fx.smoke(c.chestPos(), 1, 0.5, 0x2a3a2a, 0.9, 0.8);
+      if (Math.random() < dt * 2) {
+        const v = g.enemies(c).find((e) => Math.hypot(e.pos.x - c.pos.x, e.pos.z - c.pos.z) < 5);
+        if (v) { g.popup(c, 'BROKEN BODY', '#ff8a8a', 14); c.lock = Math.max(c.lock, 0.18); }
+      }
+    }
+  },
+  onHurt(g, vic, _att, amt, o) {
+    // Pain is not a cost for him — it is fuel. Taking damage cuts the drain and pushes the meter back up.
+    if (o.dot || vic.form !== 'adult') return;
+    g.addMeter(vic, amt * 0.22);
   },
   onFormEnd(g, c, was) {
     if (was === 'adult') {
-      g.setForm(c, 'exhaust', 5);
-      c.speedMult = 0.72;
-      c.buffDmg = 0.7;
-      g.popup(c, 'EXHAUSTED', '#c0c0c0', 24);
+      g.setForm(c, 'exhaust', 30);
+      c.speedMult = 0.6;
+      c.rangeMult = 0.9;
+      c.atkSpeed = 0.82;
+      c.dmgTaken = 1.35;
+      c.buffDmg = 0.78;
+      c.meter = 0;
+      g.banner('THE BILL COMES DUE', 'Adult Gon collapses — his body is broken for 30 seconds. Survive.', 4);
+      g.popup(c, 'BROKEN BODY · 30s', '#ff8a8a', 26);
+      g.flash('#3a0a0a', 0.4);
+      sfx('thunder');
     }
   },
 };

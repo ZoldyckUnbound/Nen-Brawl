@@ -100,6 +100,22 @@ let flats: Flat[] = [];
 let roadSegs: { x1: number; z1: number; x2: number; z2: number; w: number }[] = [];
 export function setFlats(f: Flat[]) { flats = f; }
 export function setRoadSegs(s: typeof roadSegs) { roadSegs = s; }
+/**
+ * Causeways: where a road has to cross open water (a harbour out on a promontory, a bridge between two banks)
+ * the island builds a stone pier instead of painting tarmac on the seabed. Stored as the same segment list so
+ * `groundAt`, collision, the coastline map and the mesh all agree about where solid ground is.
+ */
+let pierSegs: typeof roadSegs = [];
+export function setPierSegs(s: typeof roadSegs) { pierSegs = s; }
+function pierDist(x: number, z: number) {
+  let best = 1e9;
+  for (const s of pierSegs) {
+    if (x < Math.min(s.x1, s.x2) - 40 || x > Math.max(s.x1, s.x2) + 40 || z < Math.min(s.z1, s.z2) - 40 || z > Math.max(s.z1, s.z2) + 40) continue;
+    const d = distSeg(x, z, s.x1, s.z1, s.x2, s.z2) - s.w * 0.5;
+    if (d < best) best = d;
+  }
+  return best;
+}
 export function roadSegments() { return roadSegs; }
 
 function distSeg(x: number, z: number, x1: number, z1: number, x2: number, z2: number) {
@@ -162,6 +178,15 @@ export function groundAt(x: number, z: number): number {
     const d = Math.hypot(x - f.x, z - f.z);
     if (d < f.r * 1.8) h = lerp(h, f.h, 1 - sstep(f.r * 0.8, f.r * 1.8, d));
   }
+  // a causeway lifts the seabed to just above the waterline (the pier deck is drawn on top of it)
+  if (pierSegs.length) {
+    const pd = pierDist(x, z);
+    if (pd < 34) {
+      const k = 1 - sstep(9, 34, pd);
+      const deck = SEA_Y + 0.9;
+      if (h < deck) h = lerp(h, deck, k);
+    }
+  }
   return h;
 }
 export const naturalAt = natural;
@@ -219,6 +244,8 @@ export function colorAt(x: number, z: number, h: number, slope: number, out: num
     if (rd < 40 && h < 12) { const k = 1 - sstep(8, 40, rd); r = lerp(r, 0.55, k * 0.7); g = lerp(g, 0.5, k * 0.7); b = lerp(b, 0.36, k * 0.7); }
     const rod = roadDist(x, z);
     if (rod < 4) { const k = 1 - sstep(0, 4, rod); r = lerp(r, 0.64 + nv2 * 0.05, k * 0.9); g = lerp(g, 0.53 + nv2 * 0.04, k * 0.9); b = lerp(b, 0.37, k * 0.9); }
+    // a pier deck is pale stone, not tarmac – the road colour stops at the waterline
+    if (pierSegs.length) { const pd2 = pierDist(x, z); if (pd2 < 5) { const k = 1 - sstep(1, 5, pd2); r = lerp(r, 0.72, k); g = lerp(g, 0.7, k); b = lerp(b, 0.65, k); } }
   }
   out[0] = r; out[1] = g; out[2] = b;
 }
@@ -236,26 +263,37 @@ export function biomeName(x: number, z: number, h: number): string {
 /** Mitchell best-candidate points on dry, gentle land – used for player spawns */
 export function landPoints(n: number, rnd: () => number, opts: { maxR: number; avoid?: { x: number; z: number; r: number }[] }): { x: number; z: number }[] {
   const pts: { x: number; z: number }[] = [];
+  /** a spawn point must be somewhere a hunter could actually stand: dry, flat-ish, clear of water and towns */
   const ok = (x: number, z: number) => {
     if (Math.hypot(x, z) > opts.maxR) return false;
-    if (sdf(x, z) < 300) return false;
+    if (sdf(x, z) < 320) return false;
     const h = groundAt(x, z);
-    if (h < 2.2 || h > 110) return false;
-    if (slopeAt(x, z, 6) > 0.42) return false;
-    if (riverDist(x, z) < 60) return false;
+    if (h < 2.4 || h > 95) return false;
+    if (slopeAt(x, z, 8) > 0.3) return false;
+    if (riverDist(x, z) < 70) return false;
+    // never inside / right next to the sea, a lake or the map's edge
+    for (let a = 0; a < 8; a++) { const ax = x + Math.cos(a) * 26, az = z + Math.sin(a) * 26; if (groundAt(ax, az) < 0.8) return false; }
     for (const a of opts.avoid ?? []) if (Math.hypot(x - a.x, z - a.z) < a.r) return false;
     return true;
   };
-  for (let i = 0; i < n; i++) {
+  // candidate pool, best-candidate (farthest-point) sampling so everyone starts spread out
+  const cands: { x: number; z: number }[] = [];
+  for (let k = 0; k < 4000 && cands.length < 900; k++) {
+    const x = (rnd() * 2 - 1) * 6600, z = (rnd() * 2 - 1) * 7000;
+    if (ok(x, z)) cands.push({ x, z });
+  }
+  // K seeds: greedily take the candidate that is farthest from the ones already chosen
+  for (let i = 0; i < n && cands.length; i++) {
     let best: { x: number; z: number } | null = null, bd = -1;
-    for (let k = 0; k < 160; k++) {
-      const x = (rnd() * 2 - 1) * 6600, z = (rnd() * 2 - 1) * 7000;
-      if (!ok(x, z)) continue;
+    for (const c of cands) {
       let md = 1e9;
-      for (const p of pts) md = Math.min(md, Math.hypot(p.x - x, p.z - z));
-      if (md > bd) { bd = md; best = { x, z }; }
+      for (const p of pts) md = Math.min(md, Math.hypot(p.x - c.x, p.z - c.z));
+      if (md > bd) { bd = md; best = c; }
+      if (pts.length === 0) { best = c; break; }
     }
-    if (best) pts.push(best);
+    if (!best) break;
+    pts.push(best);
+    cands.splice(cands.indexOf(best), 1);
   }
   return pts;
 }

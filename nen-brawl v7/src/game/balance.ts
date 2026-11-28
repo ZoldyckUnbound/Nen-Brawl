@@ -6,7 +6,8 @@ import type { Fighter } from './Fighter';
 /**
  * Nen Brawl balance pass.
  *
- * Every hunter's moveset was rebuilt around a meta Blox Fruits fruit / sword (2022 → 2026 patches) while keeping the
+ * Every hunter's moveset is rebuilt around the Nen discipline that defines them – Emission, Transmutation, Conjuration,
+ * Manipulation, Specialisation or plain Enhancement – while keeping the
  * Hunter x Hunter ability fantasy. Kits are written against a shared budget (damage per second of cooldown, AoE size,
  * mobility distance, stun length) and then nudged here so tanks hit a little harder and glass-cannons a little softer.
  */

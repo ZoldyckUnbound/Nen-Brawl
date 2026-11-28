@@ -18,7 +18,7 @@ export const zeno = (old: CharDef): Kit => {
     return g.hitBeam(c, o, A.dir, len, w, dmg, { color: col, skill: true, kb: 9, heavy: true, bleed: 2 });
   };
   return {
-    notes: ['Inspired by the reworked Dragon (lance beams, flight dives, map-wide downfall)', 'Dragon Dive hovers and rains dragon fragments across a 14m area', 'One Day, One Kill is a pure assassin teleport – the Shadow archetype'],
+    notes: ['Nen type: Transmutation. Aura turned into a lance, thrown from the air', 'Dragon Dive hovers and rains dragon fragments across a 14m area', 'One Day, One Kill is a pure assassin teleport – the Shadow archetype'],
     skills: [
       skill('Z', 'Dragon Lance', 0, 6, [4, 26], 'Spear a fang of aura 22m down a lane: heavy damage and knockback. Pierces.', (g, c) => { prep(g, c, 'castFwd', 0.12, 0.4, col); g.after(0.12, c, () => lance(g, c, 22, 1.8, 34)); }),
       skill('X', 'Dragon Head', 0, 9, [3, 20], 'Ride a dragon of aura 16m straight through the enemy and detonate at the end of the run (6m).', (g, c) => { const A = prep(g, c, 'flykick', 0.12, 0.6, col); g.after(0.12, c, () => { const h = rush(g, c, A.flat, 16, 0.25, col, 22, { kb: 4 }, 5, 3.4); void h; }); g.after(0.4, c, () => blast(g, c, gnd(c.pos), 6, 22, col, { kb: 8, launch: 6, heavy: true })); }),
@@ -44,12 +44,12 @@ export const zeno = (old: CharDef): Kit => {
   };
 };
 
-// ============================================================ GOTOH  –  Soul Guitar / Kitsune projectile gunner with Rifling stacks
+// ============================================================ GOTOH  –  Emission: coin gunner with Rifling stacks
 export const gotoh = (old: CharDef): Kit => {
   const col = old.color;
   const coin = (g: Game, c: Fighter, dir: THREE.Vector3, dmg: number, o: object = {}, size = 0.7) => shot(g, c, { pos: c.handPos(), dir, speed: 100, r: 0.7, dmg, life: 0.6, col, size, shape: 'bullet', opts: { kb: 0.6, ...o }, onHit: () => { c.st.rifle = Math.min(5, (c.st.rifle ?? 0) + 1); c.st.rifleT = 3; } });
   return {
-    notes: ['Inspired by Soul Guitar and Kitsune fox-fire: rapid projectile pressure that stacks', 'Rifling: every landed coin adds a stack (max 5, +4% damage each) – Rifled Shot cashes in the stacks', 'Which Hand? is a Counter stance – answered with a stunning volley'],
+    notes: ['Nen type: Emission. Coins flicked out of the air, each one a small, perfectly aimed round', 'Rifling: every landed coin adds a stack (max 5, +4% damage each) – Rifled Shot cashes in the stacks', 'Which Hand? is a Counter stance – answered with a stunning volley'],
     skills: [
       skill('Z', 'Coin Gatling', 0, 4, [4, 30], 'Flick a stream of Nen-charged coins from both thumbs. HOLD to load up to 20.', (g, c, ch) => {
         const n = 6 + Math.round(ch * 14);
@@ -75,13 +75,13 @@ export const gotoh = (old: CharDef): Kit => {
   };
 };
 
-// ============================================================ FRANKLIN  –  Mammoth / T-Rex heavy gunner
+// ============================================================ FRANKLIN  –  Enhancement: heavy gunner, severed-finger cannons
 export const franklin = (old: CharDef): Kit => {
   const col = old.color;
   void old;
   const bullet = (g: Game, c: Fighter, dir: THREE.Vector3, dmg: number, from?: THREE.Vector3) => shot(g, c, { pos: from ?? c.handPos(), dir, speed: 80, r: 0.8, dmg, life: 0.7, col, size: 0.8, shape: 'bullet', opts: { kb: 1 } });
   return {
-    notes: ['Inspired by Mammoth and T-Rex: slow, heavy, armoured frame with huge area control', 'Bulldoze grants super-armour; Hammer Fall is a T-Rex style ground slam', 'Severed Fingers costs 5% HP for the biggest sustained bullet storm'],
+    notes: ['Nen type: Enhancement. A frame made heavier than a body has any right to be', 'Bulldoze grants super-armour; Hammer Fall is a mountain-breaking ground slam', 'Severed Fingers costs 5% HP for the biggest sustained bullet storm'],
     skills: [
       skill('Z', 'Finger Pop', 0, 4, [3, 28], 'Shoot a fan of Nen bullets from your fingertips. HOLD for up to 11 bullets.', (g, c, ch) => { const n = 3 + Math.round(ch * 8); prep(g, c, 'point', 0.1, 0.35, col); g.after(0.1, c, () => { sfx('zap'); fan(g, c, n, 0.12 + n * 0.05, { speed: 82, r: 0.8, dmg: 6.5, life: 0.7, col, size: 0.8, shape: 'bullet', opts: { kb: 0.8 } }); }); }, { charge: 0.7, chargeAnim: 'chargePalm' }),
       skill('X', 'Double Machine Gun', 0, 9, [0, 14], 'Every finger is a barrel: three expanding rings of bullets spray in all directions around you.', (g, c) => { prep(g, c, 'summon', 0.1, 1.0, col); for (let w = 0; w < 3; w++) g.after(0.15 + w * 0.28, c, () => { sfx('zap'); for (let i = 0; i < 14; i++) { const a = (i / 14) * 6.28 + w * 0.2; bullet(g, c, V3(Math.cos(a), rnd(-0.03, 0.03), Math.sin(a)), 6, c.chestPos()); } }); }),
@@ -99,11 +99,11 @@ export const franklin = (old: CharDef): Kit => {
   };
 };
 
-// ============================================================ KASTRO  –  Tiger / Soul Guitar shadow double
+// ============================================================ KASTRO  –  Enhancement: claw brawler with a shadow double
 export const kastro = (old: CharDef): Kit => {
   const col = old.color;
   return {
-    notes: ['Inspired by Tiger (claw rushes) and Ghost clones: a fast brawler backed by his Double', 'Double pincer: you strike from the front while the double strikes from behind', 'Gyo Counter reads the aura – a classic Counter stance'],
+    notes: ['Nen type: Enhancement. Claw rushes from a brawler who is never quite alone', 'Double pincer: you strike from the front while the double strikes from behind', 'Gyo Counter reads the aura – a classic Counter stance'],
     skills: [
       skill('Z', 'Tiger Bite Fist', 0, 5, [3, 14], 'Close in and rake twice with Nen-hardened claws. The second rake knocks back; both bleed.', (g, c) => {
         prep(g, c, 'jabR', 0.1, 0.65, col);
@@ -142,7 +142,7 @@ export const kastro = (old: CharDef): Kit => {
   };
 };
 
-// ============================================================ GIDO  –  Pole V2 / Spikey Trident spinner with Tops
+// ============================================================ GIDO  –  Conjuration: spinning tops, an iron pole
 export const gido = (old: CharDef): Kit => {
   const col = old.color;
   void old;
@@ -153,7 +153,7 @@ export const gido = (old: CharDef): Kit => {
     for (let i = 0; i < Math.round(t / 0.35); i++) g.after(i * 0.35, c, () => { g.fx.ring(gnd(c.pos), col, 1, 6.5, 0.3); g.hitSphere(c.chestPos(), 6.5, c, dps, { color: col, skill: true, kb: 3.5, heavy: false }); c.faceNow(c.yaw + 1.6); c.setAnim('spin', 0.3); sfx('slash'); });
   };
   return {
-    notes: ['Inspired by Pole V2 and Spikey Trident: spinning, wide hitboxes and constant pressure', 'Tornado Top gives stun immunity and cuts everything near you', 'Battle Waltz sends a ring of homing tops after the target'],
+    notes: ['Nen type: Conjuration. A polearm that spins itself, and a dance that never stops', 'Tornado Top gives stun immunity and cuts everything near you', 'Battle Waltz sends a ring of homing tops after the target'],
     skills: [
       skill('Z', 'Battle Waltz', 0, 9, [4, 30], 'Hurl a ring of eight tops that hunts the enemy for 3.6s, battering anything near them from every side.', (g, c) => { prep(g, c, 'summon', 0.15, 0.5, col); g.after(0.15, c, () => { const A = g.aim(c); for (let i = 0; i < 8; i++) { const a = (i / 8) * 6.28; top(g, c, V3(Math.cos(a), 0.05, Math.sin(a)), 8, A.target ?? g.target(c, 40), 3.6); } sfx('swing'); }); }),
       skill('X', 'Shotgun Blues', 0, 5, [3, 20], 'Fire a spread of seven spinning tops. Devastating up close.', (g, c) => { prep(g, c, 'castFwd', 0.1, 0.35, col); g.after(0.1, c, () => { sfx('boom'); fan(g, c, 7, 0.55, { speed: 55, r: 0.9, dmg: 9, life: 0.55, col, size: 0.9, shape: 'orb', opts: { kb: 1.5 } }); }); }),

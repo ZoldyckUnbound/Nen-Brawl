@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Game, HudState } from '../game/Game';
 import { CARDS, RANK_COLOR, RANK_NAME, POIS, DUNGEONS } from '../game/br/data';
+import { explored, EXPLORED_CELL } from '../game/br/explore';
 import type { BrHudState } from '../game/br/mode';
 
 const fmtT = (s: number) => `${String(Math.floor(Math.max(0, s) / 60)).padStart(2, '0')}:${String(Math.floor(Math.max(0, s) % 60)).padStart(2, '0')}`;
@@ -49,40 +50,93 @@ function drawMarks(ctx: CanvasRenderingContext2D, br: BrHudState, X: (x: number)
   }
 }
 
-/** corner minimap – tier 0: compass only · tier 1: island outline · tier 2: detailed atlas */
+/**
+ * Always-on local map. It is a *window on the world*, not a HUD widget: you can drag it (mouse or touch),
+ * pinch / wheel it, and it follows you as you move. Without a map card you see only the ground you have
+ * actually walked (fog of war grows around you) plus your bearings. An Island Chart draws the coastline and
+ * lets you pull much further out; the Atlas paints the whole island and every landmark.
+ * Expansion is strictly gated: the zoom range is a function of br.mapLevel.
+ */
+function fogFilter(ctx: CanvasRenderingContext2D, X: (x: number) => number, Y: (z: number) => number, k: number, W: number, islandR = 6100) {
+  const cell = EXPLORED_CELL * k;
+  ctx.save();
+  // everything explored is punched out of a translucent "unknown" sheet. It is clipped to the island so the
+  // waterline, the harbours and the causeways stay readable no matter how little of the map you have walked.
+  ctx.beginPath();
+  ctx.arc(X(0), Y(0), islandR * k, 0, 6.2832);
+  ctx.clip();
+  ctx.fillStyle = 'rgba(6,9,16,0.9)';
+  ctx.fillRect(-W * k, -W * k, W * k * 2, W * k * 2);
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.fillStyle = '#fff';
+  for (const key of explored) {
+    const [i, j] = key.split(',').map(Number);
+    const x = (i + 0.5) * EXPLORED_CELL - W / 2, z = (j + 0.5) * EXPLORED_CELL - W / 2;
+    const px = X(x), py = Y(z);
+    if (px < -cell * 3 || py < -cell * 3 || px > X(W) + cell * 3 || py > Y(W) + cell * 3) continue;
+    ctx.fillRect(px - cell * 0.62, py - cell * 0.62, cell * 1.24, cell * 1.24);
+  }
+  ctx.restore();
+}
 function MiniMap({ br, game, size }: { br: BrHudState; game: Game; size: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const lvl = br.mapLevel;
+  const view = useRef({ cx: br.mini.x, cz: br.mini.z, scale: 0, drag: false, px: 0, py: 0, ptr: new Map<number, { x: number; y: number }>(), pd: 0, ps: 0, userT: 0 });
   useEffect(() => {
     const cv = ref.current, w = game.br?.world;
     if (!cv || !w) return;
     const ctx = cv.getContext('2d')!;
-    const S = size, W = w.mapW;
+    const S = size, W = w.mapW, v = view.current;
     ctx.clearRect(0, 0, S, S);
     ctx.save(); ctx.beginPath(); ctx.arc(S / 2, S / 2, S / 2, 0, 6.2832); ctx.clip();
-    if (lvl === 0) {
-      const g = ctx.createRadialGradient(S / 2, S / 2, 4, S / 2, S / 2, S / 2); g.addColorStop(0, '#1d2433'); g.addColorStop(1, '#0a0e18'); ctx.fillStyle = g; ctx.fillRect(0, 0, S, S);
-      ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.lineWidth = 1; for (let r = S * 0.16; r < S / 2; r += S * 0.14) { ctx.beginPath(); ctx.arc(S / 2, S / 2, r, 0, 6.2832); ctx.stroke(); }
-      ctx.font = 'bold 10px system-ui'; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.fillText('NO MAP CARD', S / 2, S / 2 + S * 0.3);
-      const a = br.mini.yaw; drawArrow(ctx, S / 2, S / 2, a, 9);
-      const dir = Math.atan2(-br.mini.z, -br.mini.x); // direction to the island heart
-      ctx.strokeStyle = '#ffd24a'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(S / 2, S / 2); ctx.lineTo(S / 2 + Math.cos(dir) * S * 0.36, S / 2 + Math.sin(dir) * S * 0.36); ctx.stroke();
-      ctx.fillStyle = '#ffd24a'; ctx.beginPath(); ctx.arc(S / 2 + Math.cos(dir) * S * 0.36, S / 2 + Math.sin(dir) * S * 0.36, 3.5, 0, 6.2832); ctx.fill();
-    } else {
-      const src = lvl >= 2 ? w.mapCanvas : w.chartCanvas;
-      const view = lvl >= 2 ? 2600 : W * 0.98;
-      const cx = lvl >= 2 ? br.mini.x : 0, cz = lvl >= 2 ? br.mini.z : 0, k = S / view;
-      const X = (x: number) => (x - cx) * k + S / 2, Y = (z: number) => (z - cz) * k + S / 2;
-      ctx.fillStyle = lvl >= 2 ? '#17324a' : '#10202e'; ctx.fillRect(0, 0, S, S);
+    // zoom range is the map-card gate: no card = you only ever see ~240 m around you
+    const minView = lvl >= 2 ? 150 : lvl === 1 ? 1400 : 260;
+    const maxView = lvl >= 2 ? 16000 : lvl === 1 ? 6200 : 420;
+    if (!v.scale) v.scale = lvl >= 2 ? 900 : lvl === 1 ? 1600 : 300;
+    v.scale = clampN(v.scale, minView, maxView);
+    if (!v.drag && performance.now() - v.userT > 2200) { v.cx += (br.mini.x - v.cx) * 0.16; v.cz += (br.mini.z - v.cz) * 0.16; }
+    v.cx = clampN(v.cx, -W / 2, W / 2); v.cz = clampN(v.cz, -W / 2, W / 2);
+    const k = S / v.scale;
+    const X = (x: number) => (x - v.cx) * k + S / 2, Y = (z: number) => (z - v.cz) * k + S / 2;
+    const src = lvl >= 2 ? w.mapCanvas : w.chartCanvas;
+    ctx.fillStyle = lvl >= 2 ? '#17324a' : lvl >= 1 ? '#132639' : '#0b1220'; ctx.fillRect(0, 0, S, S);
+    if (lvl >= 1) {
+      ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(src, 0, 0, src.width, src.height, X(-W / 2), Y(-W / 2), W * k, W * k);
-      drawZone(ctx, br, X, Y, k, S, S, 2);
-      if (lvl >= 2) { ctx.font = '9px system-ui'; ctx.textAlign = 'center'; for (const p of POIS) { if (p.tier < 2 && Math.hypot(p.x - cx, p.z - cz) > 1500) continue; const x = X(p.x), y = Y(p.z); if (x < 0 || y < 0 || x > S || y > S) continue; ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.beginPath(); ctx.arc(x, y, 7, 0, 6.2832); ctx.fill(); ctx.fillStyle = '#fff'; ctx.fillText(p.icon, x, y + 3.2); } }
-      drawMarks(ctx, br, X, Y, S, S, false, false);
-      drawArrow(ctx, X(br.mini.x), Y(br.mini.z), br.mini.yaw, lvl >= 2 ? 6 : 5);
+    } else {
+      // no card: only a compass grid – the ground itself is painted by the fog of war
+      ctx.strokeStyle = 'rgba(255,255,255,.07)'; ctx.lineWidth = 1;
+      for (let g = Math.ceil((v.cx - v.scale / 2) / 100) * 100; g < v.cx + v.scale / 2; g += 100) { ctx.beginPath(); ctx.moveTo(X(g), 0); ctx.lineTo(X(g), S); ctx.stroke(); }
+      for (let g = Math.ceil((v.cz - v.scale / 2) / 100) * 100; g < v.cz + v.scale / 2; g += 100) { ctx.beginPath(); ctx.moveTo(0, Y(g)); ctx.lineTo(S, Y(g)); ctx.stroke(); }
     }
+    // fog of war (this is also what the always-on minimap uses as its "immediate surroundings")
+    if (lvl < 2) fogFilter(ctx, X, Y, k, W);
+    drawZone(ctx, br, X, Y, k, S, S, 2);
+    if (lvl >= 2) {
+      ctx.font = '9px system-ui'; ctx.textAlign = 'center';
+      for (const p of POIS) { if (Math.hypot(p.x - v.cx, p.z - v.cz) > v.scale * 0.8) continue; const x = X(p.x), y = Y(p.z); if (x < 0 || y < 0 || x > S || y > S) continue; ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.beginPath(); ctx.arc(x, y, 7, 0, 6.2832); ctx.fill(); ctx.fillStyle = '#fff'; ctx.fillText(p.icon, x, y + 3.2); }
+    }
+    drawMarks(ctx, br, X, Y, S, S, false, lvl >= 2);
+    // you, always centred when not dragged
+    drawArrow(ctx, X(br.mini.x), Y(br.mini.z), br.mini.yaw, lvl >= 2 ? 6 : 5);
     ctx.restore();
+    // frame
+    ctx.beginPath(); ctx.arc(S / 2, S / 2, S / 2 - 1, 0, 6.2832);
+    ctx.strokeStyle = 'rgba(255,255,255,.18)'; ctx.lineWidth = 2; ctx.stroke();
+    if (lvl === 0) { ctx.strokeStyle = 'rgba(255,210,90,.5)'; ctx.setLineDash([4, 5]); ctx.beginPath(); ctx.arc(S / 2, S / 2, Math.max(3, (maxView / 2) * k), 0, 6.2832); ctx.stroke(); ctx.setLineDash([]); }
   });
-  return <canvas ref={ref} width={size} height={size} className="block" style={{ width: size, height: size }} />;
+  const s = view.current;
+  const down = (e: React.PointerEvent) => { (e.target as HTMLElement).setPointerCapture(e.pointerId); s.ptr.set(e.pointerId, { x: e.clientX, y: e.clientY }); s.drag = true; s.userT = performance.now(); if (s.ptr.size === 2) { const [a, b] = [...s.ptr.values()]; s.pd = Math.hypot(a.x - b.x, a.y - b.y); s.ps = s.scale; } };
+  const move = (e: React.PointerEvent) => {
+    const p = s.ptr.get(e.pointerId); if (!p) return;
+    e.stopPropagation();
+    if (s.ptr.size === 1) { s.cx -= (e.clientX - p.x) * (s.scale / size); s.cz -= (e.clientY - p.y) * (s.scale / size); s.userT = performance.now(); }
+    else if (s.ptr.size === 2) { s.ptr.set(e.pointerId, { x: e.clientX, y: e.clientY }); const [a, b] = [...s.ptr.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); if (s.pd > 0 && d > 0) s.scale = clampN(s.ps * (s.pd / d), lvl >= 2 ? 150 : lvl === 1 ? 1400 : 260, lvl >= 2 ? 16000 : lvl === 1 ? 6200 : 420); s.userT = performance.now(); }
+    s.ptr.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  };
+  const up = (e: React.PointerEvent) => { s.ptr.delete(e.pointerId); if (!s.ptr.size) s.drag = false; };
+  const wheel = (e: React.WheelEvent) => { e.preventDefault(); s.scale = clampN(s.scale * Math.exp(e.deltaY * 0.0012), lvl >= 2 ? 150 : lvl === 1 ? 1400 : 260, lvl >= 2 ? 16000 : lvl === 1 ? 6200 : 420); s.userT = performance.now(); };
+  return <canvas ref={ref} width={size} height={size} className="block touch-none" style={{ width: size, height: size, cursor: s.drag ? 'grabbing' : 'grab' }} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} onWheel={wheel} onContextMenu={(e) => e.preventDefault()} />;
 }
 
 /** the full map: pan with a drag (mouse / touch), zoom with the wheel or a pinch – no on-screen drag handle */
@@ -120,11 +174,14 @@ function MapView({ br, game }: { br: BrHudState; game: Game }) {
       s.cx = clampN(s.cx, -W / 2, W / 2); s.cz = clampN(s.cz, -W / 2, W / 2);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       const X = (x: number) => (x - s.cx) * k + w / 2, Y = (z: number) => (z - s.cz) * k + h / 2;
-      const detailed = b.mapLevel >= 2;
+      const detailed = b.mapLevel >= 2, charted = b.mapLevel >= 1;
       ctx.fillStyle = detailed ? '#12324a' : '#0e1a26'; ctx.fillRect(0, 0, w, h);
       ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-      const src = detailed ? world.mapCanvas : world.chartCanvas;
-      ctx.drawImage(src, 0, 0, src.width, src.height, X(-W / 2), Y(-W / 2), W * k, W * k);
+      if (charted) {
+        const src = detailed ? world.mapCanvas : world.chartCanvas;
+        ctx.drawImage(src, 0, 0, src.width, src.height, X(-W / 2), Y(-W / 2), W * k, W * k);
+        if (!detailed) fogFilter(ctx, X, Y, k, W);
+      }
       // survey grid (1 km) + degree ticks
       ctx.strokeStyle = detailed ? 'rgba(255,255,255,.08)' : 'rgba(80,50,20,.18)'; ctx.lineWidth = 1; ctx.beginPath();
       const g0 = 1000; for (let gx = Math.ceil((s.cx - w * s.scale / 2) / g0) * g0; gx < s.cx + w * s.scale / 2; gx += g0) { ctx.moveTo(X(gx), 0); ctx.lineTo(X(gx), h); }
@@ -182,12 +239,13 @@ function MapView({ br, game }: { br: BrHudState; game: Game }) {
         {[['+', 0.7, 'Zoom in'], ['−', 1.4, 'Zoom out']].map(([l, k, t]) => <button key={l as string} title={t as string} onClick={() => zoomBtn(k as number)} className="grid h-9 w-9 place-items-center rounded-lg border border-white/25 bg-black/65 text-lg font-black backdrop-blur transition hover:border-yellow-300 hover:text-yellow-200 active:scale-95">{l}</button>)}
         <button title="Center on you" onClick={() => { s.cx = br.mini.x; s.cz = br.mini.z; }} className="grid h-9 w-9 place-items-center rounded-lg border border-white/25 bg-black/65 text-base backdrop-blur transition hover:border-yellow-300 active:scale-95">◎</button>
       </div>
-      {hint && <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-white/20 bg-black/65 px-3 py-1 text-[11px] font-bold tracking-wide text-white/80 backdrop-blur">Drag to explore · scroll / pinch to zoom · double-click to focus · F to recenter</div>}
+      {hint && <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-white/20 bg-black/65 px-3 py-1 text-center text-[11px] font-bold tracking-wide text-white/80 backdrop-blur">Drag to explore · scroll / pinch to zoom · double-click to focus · F to recenter{lvl < 2 ? ' · a map card widens the zoom' : ''}</div>}
       <div className="pointer-events-none absolute left-3 top-3 rounded-lg border border-white/15 bg-black/55 px-2.5 py-1.5 text-[10px] font-black leading-4 tracking-wider backdrop-blur">
-        <div className="text-yellow-300">{lvl >= 2 ? 'GREED ISLAND ATLAS' : 'ISLAND CHART'}</div>
+        <div className="text-yellow-300">{lvl >= 2 ? 'GREED ISLAND ATLAS' : lvl === 1 ? 'ISLAND CHART' : 'LOCAL SURROUNDINGS'}</div>
         <div className="text-white/70"><span className="text-white">▬</span> safe zone · <span className="text-yellow-300">┅</span> next · <span className="text-emerald-300">●</span> ally</div>
         {lvl >= 2 && <div className="text-white/70"><span className="text-orange-300">◆</span> rare site · <span className="text-red-300">●</span> revealed · <span className="text-yellow-300">◆</span> drop</div>}
-        {lvl < 2 && <div className="text-amber-200/80">An Atlas adds biomes, towns and landmarks</div>}
+        {lvl === 1 && <div className="text-amber-200/80">Chart: coastline + the ground you have walked · an Atlas reveals towns and landmarks</div>}
+        {lvl === 0 && <div className="max-w-[230px] text-amber-200/85">No map card: you see only the ground you have walked. A Chart or Atlas widens the view.</div>}
       </div>
     </div>
   );
@@ -303,8 +361,12 @@ function Binder({ game, br }: { game: Game; br: BrHudState }) {
 
 function DialogView({ game, br }: { game: Game; br: BrHudState }) {
   const d = br.dialog!;
+  // On a phone the dialog is opened by the same finger that then taps: opening happened on pointerdown, and the
+  // backdrop's click arrives a few milliseconds later – which used to close the dialog before you could read it.
+  const readyAt = useRef(performance.now() + 320);
+  const dismiss = () => { if (performance.now() >= readyAt.current) game.br?.closeDialog(); };
   return (
-    <div className="pointer-events-auto absolute inset-0 z-40 grid place-items-center overflow-y-auto bg-black/55 p-3 backdrop-blur-[2px]" onClick={() => game.br?.closeDialog()}>
+    <div className="pointer-events-auto absolute inset-0 z-40 grid place-items-center overflow-y-auto bg-black/55 p-3 backdrop-blur-[2px]" onClick={dismiss}>
       <div className="nb-panel w-[min(560px,96vw)] rounded-2xl border border-yellow-300/60 bg-[#14101f]/95 p-4 shadow-[0_0_40px_rgba(255,200,60,.2)]" onClick={(e) => e.stopPropagation()}>
         <div className="text-[10px] font-black tracking-[0.4em] text-yellow-300">{d.npc.toUpperCase()}</div>
         <div className="text-xl font-black tracking-wide">{d.title}</div>
@@ -332,7 +394,7 @@ function Cinematic({ br }: { br: BrHudState }) {
   const bars = Math.min(1, c.t / 1.2) * Math.min(1, (c.len - c.t) / 1.2);
   const showTitle = last?.title && (last as { t?: number }).t !== undefined ? c.t - ((last as { t?: number }).t ?? 0) < 4 : !!last?.title;
   return (
-    <div className="pointer-events-none absolute inset-0 z-30 overflow-hidden font-sans text-white">
+    <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden font-sans text-white">
       <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.55) 100%)' }} />
       <div className="absolute inset-x-0 top-0 bg-black" style={{ height: `${13 * bars}vh` }} />
       <div className="absolute inset-x-0 bottom-0 bg-black" style={{ height: `${25 * bars}vh` }} />
@@ -359,7 +421,7 @@ export default function BrHud({ game, hud }: { game: Game; hud: HudState }) {
   if (br.cut) return <Cinematic br={br} />;
 
   return (
-    <div className="pointer-events-none absolute inset-0 z-30 font-sans text-white">
+    <div className="pointer-events-none absolute inset-0 z-10 font-sans text-white">
       {!touch && hint && !br.binderOpen && <div className="absolute bottom-[112px] left-1/2 -translate-x-1/2 rounded-lg border border-white/15 bg-black/55 px-3 py-1 text-[11px] font-bold tracking-wide text-white/80 backdrop-blur"><b className="text-yellow-300">B</b> binder · <b className="text-yellow-300">E</b> interact · <b className="text-yellow-300">R</b> heal · <b className="text-yellow-300">M</b> map · <b className="text-yellow-300">Q</b> dash · <b className="text-yellow-300">I / O</b> zoom</div>}
       {br.outside && (
         <>
@@ -379,7 +441,7 @@ export default function BrHud({ game, hud }: { game: Game; hud: HudState }) {
         <button className="nb-bezel pointer-events-auto relative overflow-hidden rounded-full" onClick={() => game.br?.toggleMap()} style={{ width: mm, height: mm }} title={br.mapLevel ? 'Open map (M)' : 'No map card'}>
           <MiniMap br={br} game={game} size={mm} />
           <span className="pointer-events-none absolute left-1/2 top-0.5 -translate-x-1/2 text-[9px] font-black text-white/80 [text-shadow:0_1px_2px_#000]">N</span>
-          {br.mapLevel > 0 && <span className="pointer-events-none absolute bottom-1 left-1/2 -translate-x-1/2 rounded bg-black/55 px-1 text-[8px] font-black tracking-widest text-yellow-200">{br.mapLevel >= 2 ? 'ATLAS' : 'CHART'}</span>}
+          <span className="pointer-events-none absolute bottom-1 left-1/2 -translate-x-1/2 rounded bg-black/55 px-1 text-[8px] font-black tracking-widest text-yellow-200">{br.mapLevel >= 2 ? 'ATLAS' : br.mapLevel === 1 ? 'CHART' : 'LOCAL'}</span>
         </button>
         <div className="max-w-[210px] rounded-lg border border-fuchsia-300/40 bg-black/65 px-2 py-1 text-right text-[10px] font-black leading-3 tracking-wider text-fuchsia-100 backdrop-blur sm:text-[11px]">
           {!z.started ? <>BARRIER RISES IN {fmtT(1200 - br.time)}</> : z.closing ? <>BARRIER CLOSING · {fmtT(z.tNext)}<div className="text-fuchsia-300/70">→ {Math.round(z.nextR)}m</div></> : <>NEXT SHRINK {fmtT(z.tNext)}<div className="text-fuchsia-300/70">→ {Math.round(z.nextR)}m</div></>}
@@ -414,9 +476,10 @@ export default function BrHud({ game, hud }: { game: Game; hud: HudState }) {
       )}
       {br.esp.map((e, i) => <div key={i} className="absolute -translate-x-1/2 -translate-y-full text-center text-[10px] font-black [text-shadow:0_1px_2px_#000]" style={{ left: `${e.x * 100}%`, top: `${e.y * 100}%`, color: e.color }}>▼<div>{e.name} · {Math.round(e.dist)}m</div></div>)}
 
-      {br.binderOpen && <Binder game={game} br={br} />}
-      {br.dialog && <DialogView game={game} br={br} />}
-      {br.mapOpen && br.mapLevel > 0 && (
+      {br.binderOpen && <div className="pointer-events-auto absolute inset-0 z-40"><Binder game={game} br={br} /></div>}
+      {/* the dialog lives above the touch controls (z-40) – it must, or a tap lands on the ATTACK button */}
+      <div className="pointer-events-none absolute inset-0 z-50" style={{ display: br.dialog ? undefined : 'none' }}><DialogView game={game} br={br} /></div>
+      {br.mapOpen && (
         <div className="pointer-events-auto absolute inset-0 z-40 grid place-items-center bg-black/70 p-2 backdrop-blur-sm sm:p-5" onClick={() => game.br?.toggleMap()}>
           <div className="nb-mapframe relative h-[min(780px,92vh)] w-[min(1180px,97vw)] overflow-hidden rounded-2xl" onClick={(e) => e.stopPropagation()}>
             <MapView br={br} game={game} />

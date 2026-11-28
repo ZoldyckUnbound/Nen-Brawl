@@ -51,10 +51,22 @@ function park(C: Ctx, x: number, z: number, r: number, pond = true) {
   for (let i = 0; i < 4; i++) { const a = (i / 4) * TAU + 0.8; bench(C, x + Math.cos(a) * r * 0.5, z + Math.sin(a) * r * 0.5, a + Math.PI / 2); }
 }
 function floatingLantern(C: Ctx, x: number, z: number, y: number, col: number) {
-  const m = new THREE.Mesh(new THREE.IcosahedronGeometry(0.55, 1), new THREE.MeshBasicMaterial({ color: new THREE.Color(col).multiplyScalar(2.2) }));
+  // a paper lantern: opaque shell, a warm mantle inside, and a tiny point of light so it *reads* as a lamp
+  const g = new THREE.Group();
+  const shell = new THREE.Mesh(new THREE.IcosahedronGeometry(0.62, 1), new THREE.MeshLambertMaterial({ color: new THREE.Color(col).multiplyScalar(0.55), transparent: true, opacity: 0.82 }));
+  const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 1), new THREE.MeshBasicMaterial({ color: new THREE.Color(col).multiplyScalar(1.35) }));
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(1.1, 0.035, 5, 18), new THREE.MeshBasicMaterial({ color: new THREE.Color(col).multiplyScalar(0.8), transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false }));
+  ring.rotation.x = Math.PI / 2;
+  g.add(shell, core, ring);
+  g.position.set(x, C.gy + y, z); C.group.add(g);
+  C.lampAdd(x, y + 1.4, z, col);
   const ph = C.R() * 6;
-  m.position.set(x, C.gy + y, z); C.group.add(m);
-  C.anim.push((t) => { m.position.y = C.gy + y + Math.sin(t * 1.3 + ph) * 0.8; m.rotation.y = t * 0.8 + ph; });
+  C.anim.push((t) => {
+    g.position.y = C.gy + y + Math.sin(t * 1.3 + ph) * 0.8;
+    g.rotation.y = t * 0.8 + ph;
+    ring.rotation.z = t * 0.4 + ph;
+    ring.scale.setScalar(1 + Math.sin(t * 2.2 + ph) * 0.12);
+  });
 }
 function colosseum(C: Ctx, x: number, z: number) {
   const t = new Loc(C, x, z, 0);
@@ -172,12 +184,12 @@ export function buildCity(C: Ctx, p: Poi): boolean {
       const wt = (h: number, rad = 11): Bld => ({ f: (x, z, ry) => wizardTower(C, x, z, ry, h + C.R() * 14, pickR(C, [0x7a5ac8, 0x6a4ab8, 0x8a6ad8]), pickR(C, [0xb58cff, 0x6ad0ff, 0xff8ae8])), rad });
       const dm = (r: number): Bld => ({ f: (x, z, ry) => dome(C, x, z, ry, 0xd8c8f0, 0x7a4ac8, r), rad: r * 1.4 });
       plan(C, p, { ...base, spokes: 7, rot: 0.5, plazaR: 46, roadCol: 0xa89ccc, plazaCol: 0xa89ccc, lampCol: 0xc8a8ff, core: [wt(22), dm(7), twn(), wt(30, 12)], mid: [wt(14), twn(), tim(), dm(6), cot()], outer: [cot(), tim(), wt(10), cot()], second: 1.0 }, R);
-      L.cyl(0, 0, 0, 22, 1.4, 22, 0x8a7ab8); L.cyl(0, 1.4, 0, 15, 0.4, 15, 0xd8c8f0); L.cyl(0, 1.8, 0, 3, 18, 3, 0x7a5ac8); L.sph(0, 19.6, 0, 3, 3, 3, 0xb58cff, 2.6);
-      const orb = new THREE.Mesh(new THREE.IcosahedronGeometry(2.6, 1), new THREE.MeshBasicMaterial({ color: new THREE.Color(0xd8b8ff).multiplyScalar(2.2) })); orb.position.set(p.x, C.gy + 27, p.z); C.group.add(orb);
+      L.cyl(0, 0, 0, 22, 1.4, 22, 0x8a7ab8); L.cyl(0, 1.4, 0, 15, 0.4, 15, 0xd8c8f0); L.cyl(0, 1.8, 0, 3, 18, 3, 0x7a5ac8); L.sph(0, 19.6, 0, 3, 3, 3, 0xb58cff, 1.15); C.lampAdd(p.x, 21, p.z, 0xb58cff);
+      const orb = new THREE.Mesh(new THREE.IcosahedronGeometry(2.6, 1), new THREE.MeshBasicMaterial({ color: new THREE.Color(0xd8b8ff).multiplyScalar(1.1) })); orb.position.set(p.x, C.gy + 27, p.z); C.group.add(orb);
       C.anim.push((t) => { orb.rotation.y = t; orb.position.y = C.gy + 27 + Math.sin(t * 1.5) * 1.6; });
       C.circle(p.x, p.z, 2.4, 18);
-      for (let i = 0; i < 12; i++) { const a = (i / 12) * TAU; const x = p.x + Math.cos(a) * 32, z = p.z + Math.sin(a) * 32; const o = new Loc(C, x, z, a); o.box(0, 0, 0, 1.4, 8 + (i % 3) * 2.4, 1.4, 0x6a5aa8); o.box(0, 8 + (i % 3) * 2.4, 0, 0.9, 1.8, 0.9, 0xb58cff, 2); C.circle(x, z, 1, 10); }
-      for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU; L.add('box', Math.cos(a) * 24, 1.62, Math.sin(a) * 24, 0.6, 0.06, 30, a + 1.57, 0xb58cff, 1.6); }
+      for (let i = 0; i < 12; i++) { const a = (i / 12) * TAU; const x = p.x + Math.cos(a) * 32, z = p.z + Math.sin(a) * 32; const o = new Loc(C, x, z, a); o.box(0, 0, 0, 1.4, 8 + (i % 3) * 2.4, 1.4, 0x6a5aa8); o.box(0, 8 + (i % 3) * 2.4, 0, 0.9, 1.8, 0.9, 0xb58cff, 1.1); C.lampAdd(x, 9 + (i % 3) * 2.4, z, 0xb58cff); C.circle(x, z, 1, 10); }
+      for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU; L.add('box', Math.cos(a) * 24, 1.62, Math.sin(a) * 24, 0.6, 0.06, 30, a + 1.57, 0xb58cff, 1.1); }
       for (let i = 0; i < 46; i++) { const a = C.R() * TAU, d = 20 + C.R() * (R * 0.85); floatingLantern(C, p.x + Math.cos(a) * d, p.z + Math.sin(a) * d, 6 + C.R() * 16, pickR(C, [0xb58cff, 0x6ad0ff, 0xff8ae8, 0xffd24a])); }
       return true;
     }
@@ -202,10 +214,10 @@ export function buildCity(C: Ctx, p: Poi): boolean {
       return true;
     }
     case 'casino': { // Dorias – neon strip with the grand casino
-      const neon = (rad = 9): Bld => ({ f: (x, z, ry) => { townhouse(C, x, z, ry, PALS.casino ?? pal); const n = new Loc(C, x, z, ry); n.box(0, 11, 5.6, 5.4, 0.5, 0.3, pickR(C, [0xff4fd8, 0x3af0ff, 0xffe14a]), 2.6); }, rad });
+      const neon = (rad = 9): Bld => ({ f: (x, z, ry) => { townhouse(C, x, z, ry, PALS.casino ?? pal); const n = new Loc(C, x, z, ry); n.box(0, 11, 5.6, 5.4, 0.5, 0.3, pickR(C, [0xff4fd8, 0x3af0ff, 0xffe14a]), 1.35); }, rad });
       const cas = (): Bld => ({ f: (x, z, ry) => casino(C, x, z, ry, pickR(C, [0x2a1a58, 0x581a3a, 0x1a3a58])), rad: 26 });
       plan(C, p, { ...base, spokes: 7, rot: 0.3, plazaR: 44, plazaCol: 0x3a244a, roadCol: 0x2f2440, lampCol: 0xff4fd8, core: [neon(), neon(), cas(), shp()], mid: [neon(), cas(), twn(), neon()], outer: [twn(), cot(), neon()], second: 1.0 }, R);
-      L.cyl(0, 0.3, 0, 90, 0.14, 90, 0x2a1a3a); for (let i = 0; i < 16; i++) { const a = (i / 16) * TAU; L.disc(Math.cos(a) * 30, Math.sin(a) * 30, 1.2, 0xff4fd8, 0.4); L.sph(Math.cos(a) * 40, 0.3, Math.sin(a) * 40, 1.1, 1.1, 1.1, [0xff4fd8, 0x3af0ff, 0xffe14a][i % 3], 2.2); }
+      L.cyl(0, 0.3, 0, 90, 0.14, 90, 0x2a1a3a); for (let i = 0; i < 16; i++) { const a = (i / 16) * TAU; L.disc(Math.cos(a) * 30, Math.sin(a) * 30, 1.2, 0xff4fd8, 0.4); L.sph(Math.cos(a) * 40, 0.3, Math.sin(a) * 40, 1.1, 1.1, 1.1, [0xff4fd8, 0x3af0ff, 0xffe14a][i % 3], 1.15); }
       casino(C, p.x, p.z - 60, Math.PI, 0x4a1a6a); C.claim(p.x, p.z - 60, 48);
       for (let i = 0; i < 6; i++) { const a = i * 1.04 + 0.5; wizardTower(C, p.x + Math.cos(a) * 80, p.z + Math.sin(a) * 80, a, 30, 0x3a2a68, 0xff4fd8); }
       for (let i = 0; i < 50; i++) { const a = C.R() * TAU, d = 20 + C.R() * R * 0.85; floatingLantern(C, p.x + Math.cos(a) * d, p.z + Math.sin(a) * d, 4 + C.R() * 10, pickR(C, [0xff4fd8, 0x3af0ff, 0xffe14a])); }

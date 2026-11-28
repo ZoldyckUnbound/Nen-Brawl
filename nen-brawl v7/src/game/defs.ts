@@ -75,6 +75,10 @@ export interface CharDef {
   gainHit: number;
   gainHurt: number;
   chargeDrain?: number;
+  /** this character's signature form does NOT run on a timer – its own update() decides when it ends (Gon's covenant) */
+  holdForm?: boolean;
+  /** multiplier on signature-meter gain while transformed (default 0.5) */
+  formGain?: number;
   skills: SkillDef[];
   formSkills?: SkillDef[];
   m1: M1Def;
@@ -125,5 +129,5 @@ export interface DmgOpts {
   reflected?: boolean;
 }
 
-/** global cooldown tempo: skills come back faster (Blox-Fruits-style) – ultimates a little slower than basics */
+/** global cooldown tempo: skills come back quickly and ultimates lag a beat behind the basics */
 export const cdScale = (i: number) => (i === 3 ? 0.85 : 0.72);

@@ -9,12 +9,12 @@ import {
 } from './mv';
 import { gy } from '../terrain';
 
-// ============================================================ GON  –  Tiger (Leopard rework) + Awakened Dough
+// ============================================================ GON  –  Enhancement: Jajanken, Hunt stacks, the covenant
 export const gon = (old: CharDef): Kit => {
   const col = old.color, DK = 0x2fd05a, AMB = 0xffb04a;
   const ex = (c: Fighter) => { if ((c.st.execT ?? 0) > 0) { c.st.execT = 0; return 1.4; } return 1; };
   const enhance = (c: Fighter) => { if (c.meter >= 60) { c.meter -= 20; c.st.auraT = 1.2; return true; } return false; };
-  const leap = (adult: boolean) => skill('F', adult ? 'Adult Nen Leap' : 'Tiger Pounce', 0, adult ? 4 : 5, [8, 30], adult ? 'A huge, fast leap. The landing shockwave staggers and marks everything near.' : 'Pounce across the field (hold to go farther, aim up to jump high). The landing shockwave staggers enemies and stacks Hunt.', (g, c, ch) => {
+  const leap = (adult: boolean) => skill('F', adult ? 'Adult Nen Leap' : 'Nen Leap', 0, adult ? 4 : 5, [8, 30], adult ? 'A huge, fast leap. The landing shockwave staggers and marks everything near.' : 'Pounce across the field (hold to go farther, aim up to jump high). The landing shockwave staggers enemies and stacks Hunt.', (g, c, ch) => {
     const A = g.aim(c); c.faceNow(A.yaw);
     const up = Math.max(0, A.dir.y);
     c.setAnim('leap', 0.5); c.lock = 0.12;
@@ -100,10 +100,10 @@ export const gon = (old: CharDef): Kit => {
 
   return {
     notes: [
-      'Inspired by Tiger (Leopard rework) + Awakened Dough: Hunt stacks and hold-to-charge stages',
+      'Nen type: Enhancement. Every landed blow builds a Hunt stack; the last strike is held and released as one heavier blow',
       'Hunt: every hit stacks Hunt on a target (max 5). At 5 stacks your next skill is a HUNT EXECUTION: +40% damage',
       'Nen meter is now 3× harder to fill. Enhanced Jajanken spends 20 Nen (needs 60+). Adult Gon needs a FULL meter + 55 energy',
-      'Z/X/C: three Jajanken forms, Z has 3 charge stages · F: Tiger Pounce',
+      'Z/X/C: three Jajanken forms, Z has 3 charge stages · F: Nen Leap',
     ],
     gain: 1 / 3,
     skills: [
@@ -134,7 +134,7 @@ export const gon = (old: CharDef): Kit => {
   };
 };
 
-// ============================================================ KILLUA  –  Lightning + Portal speed + Kitsune clones
+// ============================================================ KILLUA  –  Transmutation: lightning, godspeed steps, afterimages
 export const killua = (old: CharDef): Kit => {
   const col = old.color;
   const shock = (g: import('../Game').Game, c: Fighter, v: Fighter) => { mark(v, 'shock', 1, 3, 5); g.fx.bolt(c.chestPos(), v.chestPos(), col, 0.15, 0.2, 1, 0.6); };
@@ -171,7 +171,7 @@ export const killua = (old: CharDef): Kit => {
   };
   return {
     notes: [
-      'Inspired by Lightning (V paralysis), Portal-style blink dashes and Kitsune clones',
+      'Nen type: Transmutation. Lightning aura paralyses on a full discharge, and afterimages step through the space between strikes',
       'Shock marks: lightning hits mark the target; Thunderbolt does +20% to shocked enemies',
       'F chains: first use reuses in 0.7s, then a normal cooldown',
       'Godspeed (V) now costs 40 energy and unlocks a barrage moveset',
@@ -208,12 +208,12 @@ export const killua = (old: CharDef): Kit => {
   };
 };
 
-// ============================================================ LEORIO  –  Quake/Rumble shock fists + Spirit sustain + Gas field
+// ============================================================ LEORIO  –  Emission: shockwave fists, the clinic, the lingering haze
 export const leorio = (old: CharDef): Kit => {
   const col = old.color;
   const rx = (v: Fighter) => mark(v, 'rx', 1, 3, 6);
   return {
-    notes: ['Inspired by Quake (shock-fist), Spirit (heal/damage swap) and Gas (lingering field)', 'Prescribe: Remote Punch and Briefcase mark enemies – marked foes take +30% from Rapid Fists', 'Doctor\'s Orders is a healing clinic for allies and a toxic field for enemies'],
+    notes: ['Nen type: Specialisation. A shockwave fist, a skill that switches between mending and harming, and a field that lingers', 'Prescribe: Remote Punch and Briefcase mark enemies – marked foes take +30% from Rapid Fists', 'Doctor\'s Orders is a healing clinic for allies and a toxic field for enemies'],
     skills: [
       skill('Z', 'Remote Punch', 0, 7, [4, 32], 'Launch a giant remote fist (HOLD for speed and power). Heavy knockback, marks the target.', (g, c, ch) => {
         prep(g, c, 'chargePalm', 0.14, 0.4, col);
@@ -247,7 +247,7 @@ export const kurapika = (old: CharDef): Kit => {
   const col = old.color;
   const em = (c: Fighter) => (c.form === 'emperor' ? 1.3 : 1);
   return {
-    notes: ['Inspired by the reworked Control (Domain, Slice N\' Dice, Transmutation) and String', 'Chain Jail is a Domain: a telegraphed cage that roots and lingers', 'Emperor Time (V) boosts every chain: +30% damage'],
+    notes: ['Nen type: Manipulation. Absolute control over chains, sealed into a conjured territory', 'Chain Jail is a Domain: a telegraphed cage that roots and lingers', 'Emperor Time (V) boosts every chain: +30% damage'],
     skills: [
       skill('Z', 'Holy Chain: Lash', 0, 8, [4, 26], 'Whip a chain 26m: damages, slows, and drags the target 8m toward you.', (g, c) => {
         prep(g, c, 'throw', 0.12, 0.38, col);
@@ -277,11 +277,11 @@ export const kurapika = (old: CharDef): Kit => {
   };
 };
 
-// ============================================================ HISOKA  –  Dough-style elastic gum + Kitsune illusions
+// ============================================================ HISOKA  –  Transmutation: Bungee Gum, Texture Surprise, decoys
 export const hisoka = (old: CharDef): Kit => {
   const col = old.color;
   return {
-    notes: ['Inspired by Dough (elastic pulls and combos) and Kitsune (illusion decoys)', 'Bungee Gum tethers an enemy: they are yanked back if they run beyond 16m', 'Texture Surprise leaves a decoy that detonates in a card burst'],
+    notes: ['Nen type: Transmutation. Aura that is both rubber and gum – sticky, elastic, and it never lets go', 'Bungee Gum tethers an enemy: they are yanked back if they run beyond 16m', 'Texture Surprise leaves a decoy that detonates in a card burst'],
     skills: [
       skill('Z', 'Trump Cards', 0, 6, [4, 30], 'Fling a fan of razor cards. HOLD for more (3-7). Tethered enemies take +30%.', (g, c, ch) => {
         prep(g, c, 'fling', 0.12, 0.38, col);
@@ -328,38 +328,38 @@ export const hisoka = (old: CharDef): Kit => {
   };
 };
 
-// ============================================================ MOREL  –  Gas (clouds) + Venom (stacking poison)
+// ============================================================ MOREL  –  Transmutation: smoke that stays and thickens
 export const morel = (old: CharDef): Kit => {
   const col = old.color;
-  const venom = (g: import('../Game').Game, c: Fighter) => (v: Fighter) => {
-    mark(v, 'venom', 1, 5, 6);
-    if (marks(v, 'venom') >= 5) { clearMark(v, 'venom'); g.damage(c, v, 18, { color: col, skill: true, noCrit: true, heavy: true }); g.popup(v, 'TOXIC BURST', '#d6b0ff', 20); g.fx.explosion(v.chestPos(), col, 2.2, 0.3); }
+  const smokeMark = (g: import('../Game').Game, c: Fighter) => (v: Fighter) => {
+    mark(v, 'smoke', 1, 5, 6);
+    if (marks(v, 'smoke') >= 5) { clearMark(v, 'smoke'); g.damage(c, v, 18, { color: col, skill: true, noCrit: true, heavy: true }); g.popup(v, 'TOXIC BURST', '#d6b0ff', 20); g.fx.explosion(v.chestPos(), col, 2.2, 0.3); }
   };
   return {
-    notes: ['Inspired by Gas (persistent cloud zoning) and Venom (stacking poison)', 'Standing in smoke stacks Venom; at 5 stacks it bursts for bonus damage', 'Pipe Slam and Smoke Step leave clouds as area denial'],
+    notes: ['Nen type: Transmutation. Smoke that stays where it was left and thickens instead of dispersing', 'Standing in smoke stacks Deep Smoke; at 5 stacks it bursts for bonus damage', 'Pipe Slam and Smoke Step leave clouds as area denial'],
     skills: [
-      skill('Z', 'Smoke Burst', 0, 8, [4, 26], 'Lob a smoke bomb (HOLD for a bigger cloud). It blooms into a lingering cloud that slows and stacks Venom.', (g, c, ch) => {
+      skill('Z', 'Smoke Burst', 0, 8, [4, 26], 'Lob a smoke bomb (HOLD for a bigger cloud). It blooms into a lingering cloud that slows and stacks Deep Smoke.', (g, c, ch) => {
         prep(g, c, 'castFwd', 0.14, 0.38, col);
-        g.after(0.14, c, () => { const A = g.aim(c); c.faceNow(A.yaw); sfx('smoke'); shot(g, c, { pos: c.handPos(), dir: A.dir.clone().add(V3(0, 0.25, 0)), speed: 34, r: 1.1, dmg: 14, life: 1.2, col, size: 1.4, shape: 'smoke', grav: 22, onEnd: (p) => { const R = 5.5 + ch * 2.5; blast(g, c, p, R * 0.7, 10, col, { kb: 3 }); field(g, c, gnd(p), R, 5, col, { dps: 7, slow: [0.6, 0.75], every: 0.5, onTick: venom(g, c) }); g.fx.smoke(p, 14, R * 0.7); } }); });
+        g.after(0.14, c, () => { const A = g.aim(c); c.faceNow(A.yaw); sfx('smoke'); shot(g, c, { pos: c.handPos(), dir: A.dir.clone().add(V3(0, 0.25, 0)), speed: 34, r: 1.1, dmg: 14, life: 1.2, col, size: 1.4, shape: 'smoke', grav: 22, onEnd: (p) => { const R = 5.5 + ch * 2.5; blast(g, c, p, R * 0.7, 10, col, { kb: 3 }); field(g, c, gnd(p), R, 5, col, { dps: 7, slow: [0.6, 0.75], every: 0.5, onTick: smokeMark(g, c) }); g.fx.smoke(p, 14, R * 0.7); } }); });
       }, { charge: 1.0, chargeAnim: 'chargeCast' }),
       skill('X', 'Smoke Jail', 0, 12, [4, 24], 'Loose a slow homing smoke wisp. On contact it encases the enemy: 1.2s stun, 2s root.', (g, c) => {
         prep(g, c, 'castFwd', 0.14, 0.4, col);
-        g.after(0.14, c, () => { const A = g.aim(c); c.faceNow(A.yaw); sfx('smoke'); shot(g, c, { pos: c.handPos(), dir: A.dir, speed: 24, r: 1.5, dmg: 16, life: 2.2, col, size: 1.6, shape: 'wisp', homing: A.target ? { target: A.target, rate: 2.4 } : undefined, onHit: (v) => { g.stunFighter(v, 1.2); v.root_ = Math.max(v.root_, 2); g.fx.smoke(v.chestPos(), 12, 2); g.popup(v, 'SMOKE JAIL', '#d6b0ff', 18); venom(g, c)(v); } }); });
+        g.after(0.14, c, () => { const A = g.aim(c); c.faceNow(A.yaw); sfx('smoke'); shot(g, c, { pos: c.handPos(), dir: A.dir, speed: 24, r: 1.5, dmg: 16, life: 2.2, col, size: 1.6, shape: 'wisp', homing: A.target ? { target: A.target, rate: 2.4 } : undefined, onHit: (v) => { g.stunFighter(v, 1.2); v.root_ = Math.max(v.root_, 2); g.fx.smoke(v.chestPos(), 12, 2); g.popup(v, 'SMOKE JAIL', '#d6b0ff', 18); smokeMark(g, c)(v); } }); });
       }),
       skill('C', 'Pipe Slam', 0, 11, [0, 14], 'Leap to the cursor and bring your pipe down: 6.5m shockwave that leaves a smoke cloud.', (g, c) => {
         const A = g.aim(c); c.faceNow(A.yaw); c.setAnim('leap', 0.5); c.lock = 0.1;
         const L = clamp(A.dist, 4, 16);
-        g.after(0.06, c, () => { c.vy = 17; c.onGround = false; c.invuln = Math.max(c.invuln, 0.2); c.forced = { vx: A.flat.x * L * 1.15, vz: A.flat.z * L * 1.15, t: 1.4, T: 1.4, ease: false, land: true }; sfx('dash'); c.onLand = { t: 3, fn: () => { c.setAnim('slamR', 0.3); const p = gnd(c.pos); blast(g, c, p, 6.5, 36, col, { kb: 8, stun: 0.7, heavy: true }); g.fx.crack(p, col, 5, 3); g.shake(0.5); field(g, c, p, 5, 4, col, { dps: 6, slow: [0.6, 0.8], every: 0.5, onTick: venom(g, c) }); c.forced = null; c.lock = 0; } }; });
+        g.after(0.06, c, () => { c.vy = 17; c.onGround = false; c.invuln = Math.max(c.invuln, 0.2); c.forced = { vx: A.flat.x * L * 1.15, vz: A.flat.z * L * 1.15, t: 1.4, T: 1.4, ease: false, land: true }; sfx('dash'); c.onLand = { t: 3, fn: () => { c.setAnim('slamR', 0.3); const p = gnd(c.pos); blast(g, c, p, 6.5, 36, col, { kb: 8, stun: 0.7, heavy: true }); g.fx.crack(p, col, 5, 3); g.shake(0.5); field(g, c, p, 5, 4, col, { dps: 6, slow: [0.6, 0.8], every: 0.5, onTick: smokeMark(g, c) }); c.forced = null; c.lock = 0; } }; });
       }),
       skill('V', 'Deep Purple', 55, 70, [0, 18], 'ULTIMATE (55 energy): your pipe pours out Deep Purple – 9s of super smoke form: faster, tougher, wider hits.', (g, c) => old.skills[3].cast(g, c, 0), { can: (_g, c) => !c.form }),
       skill('F', 'Smoke Step', 0, 6, [5, 28], 'Dissolve into smoke and dash 12m through enemies (brief invulnerability), leaving a cloud at both ends.', (g, c) => {
         const A = prep(g, c, 'crouch', 0.08, 0.3, col);
         const start = gnd(c.pos);
-        g.after(0.08, c, () => { sfx('smoke'); field(g, c, start, 4, 3, col, { dps: 5, slow: [0.6, 0.8], every: 0.5, onTick: venom(g, c) }); g.fx.smoke(c.chestPos(), 12, 2); rush(g, c, A.flat, 12, 0.16, col, 14, { slow: 1.5, slowMul: 0.7, onHit: venom(g, c) }, 3, 3); });
-        g.after(0.3, c, () => field(g, c, gnd(c.pos), 4, 3, col, { dps: 5, slow: [0.6, 0.8], every: 0.5, onTick: venom(g, c) }));
+        g.after(0.08, c, () => { sfx('smoke'); field(g, c, start, 4, 3, col, { dps: 5, slow: [0.6, 0.8], every: 0.5, onTick: smokeMark(g, c) }); g.fx.smoke(c.chestPos(), 12, 2); rush(g, c, A.flat, 12, 0.16, col, 14, { slow: 1.5, slowMul: 0.7, onHit: smokeMark(g, c) }, 3, 3); });
+        g.after(0.3, c, () => field(g, c, gnd(c.pos), 4, 3, col, { dps: 5, slow: [0.6, 0.8], every: 0.5, onTick: smokeMark(g, c) }));
       }),
     ],
-    update: (g, c, dt) => decayMarks(g, c, ['venom'], dt),
+    update: (g, c, dt) => decayMarks(g, c, ['smoke'], dt),
   };
 };
 

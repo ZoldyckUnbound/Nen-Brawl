@@ -140,6 +140,7 @@ export default function App() {
 
       {phase === 'playing' && hud && !hud.br?.cut && <Hud hud={hud} />}
       {phase === 'playing' && hud && isBR && gameRef.current && <BrHud game={gameRef.current} hud={hud} />}
+      {/* touch controls ride ABOVE the HUD panels; the HUD raises its own modal layers to z-40 when needed */}
       {phase === 'playing' && hud && touch && !hud.paused && !hud.br?.cut && gameRef.current && <MobileControls game={gameRef.current} hud={hud} />}
       {phase === 'playing' && hud?.fade && <div className="absolute inset-0 bg-black transition-opacity duration-700" />}
 

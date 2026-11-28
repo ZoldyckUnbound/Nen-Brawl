@@ -166,6 +166,13 @@ const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 const KIND_COLOR = (k: Kind) => (k === 'bandit' ? 0xffffff : CHARS[k].color);
 const SKILL_KEYS = ['KeyZ', 'KeyX', 'KeyC', 'KeyV', 'KeyF'];
+/**
+ * Dash economy. `DASH_CD_MUL` multiplies the old cooldown (a dash every 0.24 s becomes one every 0.36 s), so
+ * escapes are a resource you commit to. AI use their own, shorter cadence (see `updateAI`) but still short
+ * dashes – they should feel like *rivals*, never like they simply out-run you.
+ */
+const DASH_CD_MUL = 1.5;
+const DASH_COST = 8.2;
 const JUMP_V = 18;
 const JUMP_HOLD_MAX = 0.32;
 const JUMP_HOLD_DRAIN = 40;
@@ -249,6 +256,8 @@ export class Game {
   hadLock = false;
   fallback = false;
   needLock = false;
+  /** set while a BR dialog is open – the button-click path must not grab the cursor */
+  noLock = false;
   pendingBanner = false;
   fovKick = 0;
   shakeAmt = 0;
@@ -294,7 +303,10 @@ export class Game {
       const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
       this.composer = new EffectComposer(this.renderer, rt);
       this.composer.addPass(new RenderPass(this.scene, this.camera));
-      this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.75, 0.6, 1.5);
+      // A tight, low-threshold bloom: only things that are genuinely brighter than white (lamps, Nen discharges,
+      // the barrier) bleed. The old 0.75 / threshold 1.5 pass smeared every lit surface into a milky halo, which
+      // is why neon towns washed out and why the brightness changed with the angle you looked from.
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.52, 0.42, 1.9);
       this.composer.addPass(this.bloom);
       this.composer.addPass(new OutputPass());
     }
@@ -429,7 +441,8 @@ export class Game {
       this.resume();
       return;
     }
-    if (!this.locked && (!this.fallback || this.hadLock) && !this.paused && !this.uiOpen) this.requestLock();
+    if (this.noLock) this.noLock = false;
+    else if (!this.locked && (!this.fallback || this.hadLock) && !this.paused && !this.uiOpen) this.requestLock();
     if (this.paused || this.uiOpen) return;
     if (e.button === 0) {
       this.mouseDown = true;
@@ -646,6 +659,11 @@ export class Game {
     this.rightDown = false;
     if (this.player.charging) this.releaseCharge(this.player);
     this.emitHud(true);
+  }
+  /** a BR dialog needs a real cursor: stop re-requesting pointer lock until the player is back in the fight */
+  mouseLockOff() {
+    this.noLock = true;
+    if (this.locked) document.exitPointerLock();
   }
   closeUi() {
     if (this.binderOpen) this.toggleBinder();
@@ -1353,7 +1371,7 @@ export class Game {
     this.floater(new THREE.Vector3(f.pos.x, f.pos.y + 4.4, f.pos.z), `+${Math.round(amt)} 🛡`, '#7ad0ff', 20);
     this.fx.ring(f.pos, 0x7ad0ff, 1, 5, 0.5);
   }
-  /** Blox-Fruits style "Regeneration" channel (Phoenix-X, scaled down): hold to heal 5.4%/s, drains energy, slows you */
+  /** Ten, held: draw your aura inward and knit the body back together (5.4 %/s, drains Nen, and you move slowly) */
   startHeal(f: Fighter) {
     if (true) return false; // healing is now a passive – see healStep
     if (!f || f.dead || f.st.healing || (f.st.healCdT ?? 0) > 0 || f.energy < 10 || f.stun > 0 || f.lock > 0 || f.charging || this.frozen || this.paused) return false;
@@ -1634,13 +1652,17 @@ export class Game {
   playerDash() {
     const p = this.player;
     if (!p || p.dead || this.frozen || this.paused || this.stage === 'menu' || this.stage === 'over') return;
-    if (p.dashCd > 0 || p.stun > 0 || p.root_ > 0 || p.energy < p.dashMax * 8.2) return;
-    if (p.lock > 0) { p.lock = 0; p.m1cd = 0; p.charging = null; this.popup(p, 'DASH CANCEL', '#9fe8ff', 14); } // modern BF-style dash cancel
+      if (p.dashCd > 0 || p.stun > 0 || p.root_ > 0) return;
+    // a dash you cannot afford used to be a silent nothing: now the button tells you why it did not fire
+    if (p.energy < p.dashMax * DASH_COST) { this.popup(p, 'NO NEN FOR A DASH', '#7fd4ff', 14); sfx('ui'); return; }
+    if (p.lock > 0) { p.lock = 0; p.m1cd = 0; p.charging = null; this.popup(p, 'DASH CANCEL', '#9fe8ff', 14); } // Nen burst out of a committed strike
     let dx = p.moveInput.x;
     let dz = p.moveInput.y;
     if (dx * dx + dz * dz < 0.01) {
-      dx = -Math.sin(this.camYaw);
-      dz = -Math.cos(this.camYaw);
+      // no stick input: dash where the camera looks. (This used to be the exact opposite vector, so tapping
+      // Q while standing still threw you toward the camera while W walked you away from it.)
+      dx = Math.sin(this.camYaw);
+      dz = Math.cos(this.camYaw);
     }
     this.dash(p, dx, dz);
   }
@@ -1651,12 +1673,14 @@ export class Game {
     dx /= l;
     dz /= l;
     const god = f.form === 'god';
-    // dash cooldown cut to a third; every dash costs a sliver of energy – a touch more than the stamina regen when spammed
+    // Recovery is deliberate: a dash is an escape, not a movement key. ±50 % on the old tuning, and the
+    // cooldown now scales with where it is used – AI dashes are noticeably more frequent than a player's
+    // (they pay for it in hit points, not in cooldown). `f.dashMax` is still the *duration* used by the HUD.
     f.dashMax = f.isPlayer ? (god ? 0.15 : 0.24) : god ? 0.27 : 0.4;
-    const dashCost = f.dashMax * (f.isPlayer ? 8.2 : 6.6);
+    const dashCost = f.dashMax * (f.isPlayer ? DASH_COST : 6.6);
     if (f.def && f.energy < dashCost) return;
     if (f.def) f.energy = Math.max(0, f.energy - dashCost);
-    f.dashCd = f.dashMax;
+    f.dashCd = f.dashMax * (f.isPlayer ? DASH_CD_MUL : 1);
     const T = god ? 0.2 : 0.17;
     const sp = god ? 52 : 34;
     f.invuln = Math.max(f.invuln, 0.26);
@@ -1700,7 +1724,7 @@ export class Game {
   }
 
   // ------------------------------------------------------------------ damage
-  /** Observation-style evade: dashing through an attack refunds the dash and builds momentum (Blox Fruits 'instinct') */
+  /** Kenbunshoku (Observation): slipping *through* an incoming strike refunds the dash and builds momentum */
   perfectDodge(v: Fighter) {
     v.st.dashI = 0;
     v.dashCd = Math.min(v.dashCd, 0.12);
@@ -1747,7 +1771,7 @@ export class Game {
     if (att !== vic) this.br?.noteHit(att, vic);
     if (att !== vic && att.def && !o.dot && a > 0) this.heal(att, a * 0.02, true);
     if (!o.dot && !o.reflected && att !== vic && (vic.st.reflectT ?? 0) > 0 && a > 0) this.damage(vic, att, Math.max(1, a * 0.35), { noCrit: true, noMeter: true, reflected: true, color: 0x9fe8ff });
-    // Blox-style "Last Resort": the first time you fall below 22% HP you surge back
+    // Resolve: the first time you fall below 22 % HP your aura surges back on its own
     if (!vic.st.lrUsed && vic.hp > 0 && vic.hp < vic.maxHp * 0.22 && vic.def && !o.dot) {
       vic.st.lrUsed = 1;
       vic.st.lrHealT = 2.5;
@@ -1799,7 +1823,7 @@ export class Game {
       if (att !== vic && att.team !== vic.team) vic.ai.provoked = true;
     }
     if (!o.noMeter && !o.dot) {
-      if (att.def && att !== vic) this.addMeter(att, a * att.def.gainHit * (att.inForm ? 0.5 : 1));
+      if (att.def && att !== vic) this.addMeter(att, a * att.def.gainHit * (att.inForm ? (att.def.formGain ?? 0.5) : 1));
       if (vic.def) this.addMeter(vic, a * vic.def.gainHurt);
     }
     if (att !== vic) {
@@ -2129,10 +2153,13 @@ export class Game {
       else if (dist < 10) ai.mode = r < 0.55 ? 'approach' : 'strafe';
       else ai.mode = 'approach';
       ai.strafe = Math.random() < 0.5 ? -1 : 1;
-      if (ai.dashCd <= 0 && f.dashCd <= 0 && Math.random() < 0.14 * ai.tempo) {
+      // AI dash rhythm mirrors the player's, scaled by `tempo`: the same 1.5× cooldown, the same energy price.
+      // (Before this they could spam dashes every 0.9–1.8 s while the player waited 2.2–3.4 s and paid 8.2×
+      // the duration in Nen — i.e. the AI were simply faster than you could ever be.)
+      if (ai.dashCd <= 0 && f.dashCd <= 0 && Math.random() < 0.12 * ai.tempo) {
         if (dist > 11) this.dash(f, nx, nz);
         else if (dist < 4) this.dash(f, -nz * ai.strafe, nx * ai.strafe);
-        ai.dashCd = rand(2.2, 3.4);
+        ai.dashCd = rand(1.6, 2.6) / Math.max(0.6, ai.tempo);
       }
     }
     if (ai.jumpT <= 0 && f.onGround && f.stun <= 0) {
@@ -2199,7 +2226,7 @@ export class Game {
     if (this.keys.has('ArrowRight')) this.camYaw -= 2.2 * dt;
     if (this.keys.has('Equal') || this.keys.has('NumpadAdd') || this.keys.has('BracketRight')) this.camDist = clamp(this.camDist * Math.exp(-1.4 * dt), 3.2, 40);
     if (this.keys.has('Minus') || this.keys.has('NumpadSubtract') || this.keys.has('BracketLeft')) this.camDist = clamp(this.camDist * Math.exp(1.4 * dt), 3.2, 40);
-    // Roblox-style zoom: I = in, O = out
+    // Camera distance: I = in, O = out
     if (this.keys.has('KeyI')) this.camDist = clamp(this.camDist * Math.exp(-1.6 * dt), 2.2, 55);
     if (this.keys.has('KeyO')) this.camDist = clamp(this.camDist * Math.exp(1.6 * dt), 2.2, 55);
     if (p.lock <= 0 && p.stun <= 0) {
@@ -2526,7 +2553,7 @@ export class Game {
     if ((f.st.shock ?? 0) > 0 && !((f.st.shockT ?? 0) > 0)) f.st.shock = 0;
     if ((f.st.shock ?? 0) > 0 && Math.random() < dt * 10) this.fx.sparks(f.chestPos(), 0x9fe8ff, 1, 4);
     // forms
-    if (f.form && f.formT > 0) {
+    if (f.form && f.formT > 0 && !f.def?.holdForm) {
       f.formT -= dt;
       if (f.formT <= 0) this.endForm(f);
     }
@@ -2777,6 +2804,8 @@ export class Game {
     }
     this.sun.position.set(this.player.pos.x + 30, 60, this.player.pos.z + 20);
     this.sun.target.position.copy(this.player.pos);
+    // keep the sky/ground light centred on the player so its gradient is stable from every camera angle
+    this.hemi.position.copy(this.player.pos);
     this.updateOverlays(real);
     this.hudT -= real;
     if (this.hudT <= 0) {

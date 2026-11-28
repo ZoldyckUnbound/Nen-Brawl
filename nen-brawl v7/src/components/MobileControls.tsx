@@ -3,7 +3,7 @@ import type { Game, HudState } from '../game/Game';
 import { CHARS } from '../game/chars';
 
 /**
- * Touch layout modelled on Blox Fruits mobile:
+ * Touch layout:
  *  – left thumb: floating joystick
  *  – right thumb: drag anywhere free to rotate the camera
  *  – bottom-right: big attack button, jump and dash
@@ -94,12 +94,9 @@ export default function MobileControls({ game, hud }: { game: Game; hud: HudStat
   };
 
   return (
-    <div className="absolute inset-0 z-20 touch-none select-none" style={{ touchAction: 'none' }} onContextMenu={(e) => e.preventDefault()}>
-      {/* camera look: the whole screen, under everything else */}
-      <div className="pointer-events-auto absolute inset-0 touch-none" onPointerDown={lookDown} onPointerMove={lookMove} onPointerUp={lookUp} onPointerCancel={lookUp} />
-
-      {/* movement stick */}
-      <div className="pointer-events-auto absolute bottom-0 left-0 h-[72%] w-[36%] touch-none" onPointerDown={stickDown} onPointerMove={stickMove} onPointerUp={stickUp} onPointerCancel={stickUp}>
+    <div className="absolute inset-0 z-40 touch-none select-none" style={{ touchAction: 'none' }} onContextMenu={(e) => e.preventDefault()}>
+      {/* movement stick — the whole left third, drawn FIRST so it is above the look layer */}
+      <div className="pointer-events-auto absolute bottom-0 left-0 z-10 h-[72%] w-[38%] touch-none" onPointerDown={stickDown} onPointerMove={stickMove} onPointerUp={stickUp} onPointerCancel={stickUp}>
         {!stick && (
           <div className="pointer-events-none absolute bottom-6 left-6 h-[116px] w-[116px] rounded-full border-2 border-white/25 bg-white/5">
             <div className="absolute left-1/2 top-1/2 h-12 w-12 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/30 bg-white/15" />
@@ -113,11 +110,14 @@ export default function MobileControls({ game, hud }: { game: Game; hud: HudStat
         )}
       </div>
 
+      {/* camera look: everything the stick and the button cluster do not own */}
+      <div className="pointer-events-auto absolute inset-0 touch-none" onPointerDown={lookDown} onPointerMove={lookMove} onPointerUp={lookUp} onPointerCancel={lookUp} />
+
       {/* top-right utilities */}
       <div className="pointer-events-none absolute right-3 top-3 flex gap-2">
         {[
-          { l: '−', f: () => game.touchZoom(1.25) },
-          { l: '+', f: () => game.touchZoom(0.8) },
+          { l: '+', f: () => game.touchZoom(0.82) },
+          { l: '−', f: () => game.touchZoom(1.22) },
           { l: 'II', f: () => game.pause() },
         ].map((b) => (
           <button key={b.l} onPointerDown={(e) => { e.stopPropagation(); b.f(); }} className="pointer-events-auto grid h-10 w-10 place-items-center rounded-full border border-white/30 bg-black/55 text-sm font-black text-white backdrop-blur active:scale-90">
@@ -161,7 +161,7 @@ export default function MobileControls({ game, hud }: { game: Game; hud: HudStat
         </Btn>
       )}
       {hud.br?.prompt && (
-        <Btn onDown={() => game.touchInteract()} className="grid animate-pulse place-items-center rounded-full border-[3px] border-yellow-300 bg-yellow-500/40 text-[11px] font-black text-white backdrop-blur" style={{ right: 16, bottom: 174, width: 66, height: 66 }}>
+        <Btn onDown={() => game.touchInteract()} className="z-20 grid animate-pulse place-items-center rounded-full border-[3px] border-yellow-300 bg-yellow-500/55 text-[11px] font-black text-white shadow-[0_0_22px_rgba(255,210,60,.75)] backdrop-blur" style={{ left: 'calc(50% - 38px)', bottom: 118, width: 76, height: 76 }}>
           <span>INTERACT</span>
         </Btn>
       )}

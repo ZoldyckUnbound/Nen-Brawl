@@ -7,7 +7,7 @@ import { sfx } from '../audio';
 import { type Kit, skill, prep, cut, blast, rush, shot, field, delayed, tele, mark, marks, decayMarks, spot, gnd, rotY, rnd, clamp, V3, stage, empower, empMult, behind, WHITE } from './mv';
 import { gy } from '../terrain';
 
-// ============================================================ CHROLLO  –  Ghost (summons) + Control (copy) + Soul Guitar
+// ============================================================ CHROLLO  –  Specialisation: stolen techniques, phantoms, the sealed book
 export const chrollo = (old: CharDef): Kit => {
   const col = old.color;
   const phantom = (g: Game, c: Fighter, from: THREE.Vector3, to: Fighter | THREE.Vector3, dmg: number, o: object = {}) => {
@@ -19,7 +19,7 @@ export const chrollo = (old: CharDef): Kit => {
     sfx('slash');
   };
   return {
-    notes: ['Inspired by Ghost (phantom clones, Resurrection) and Soul Guitar / Control (copying)', 'Skill Hunter still steals the enemy\'s last skill (85% power) – the Counter/Adaptive archetype', 'Lucilfer\'s Book seals a huge ring, then seven phantoms converge'],
+    notes: ['Nen type: Specialisation. A stolen ability, a bandaged book, and a conjured copy of whatever it has seen', 'Skill Hunter still steals the enemy\'s last skill (85% power) – the Counter/Adaptive archetype', 'Lucilfer\'s Book seals a huge ring, then seven phantoms converge'],
     skills: [
       skill('Z', 'Pistol Finger', 0, 5, [5, 36], 'Fire a fast Nen bullet. HOLD for a heavy, piercing shot.', (g, c, ch) => {
         prep(g, c, 'point', 0.1, 0.28, col);
@@ -54,7 +54,7 @@ export const chrollo = (old: CharDef): Kit => {
   };
 };
 
-// ============================================================ NETERO  –  Buddha (colossal hands) + Light (instant beams) + Dragon
+// ============================================================ NETERO  –  Emission: the hundred-type prayer, colossal palms
 export const netero = (old: CharDef): Kit => {
   const col = old.color;
   const beamGold = (g: Game, c: Fighter, len: number, w: number, dmg: number, o: object = {}) => {
@@ -66,7 +66,7 @@ export const netero = (old: CharDef): Kit => {
     return g.hitBeam(c, origin, A.dir, len, w, dmg, { color: col, skill: true, heavy: true, ...o });
   };
   return {
-    notes: ['Inspired by Buddha (colossal golden hands), Light (instant beam strikes) and Dragon (aerial mobility)', 'Zero Hand has no wind-up and reaches farther the longer you focus', 'Guanyin (V) now unlocks a fully reworked Bodhisattva moveset'],
+    notes: ['Nen type: Emission. Prayer made into a thousand-armed body of aura', 'Zero Hand has no wind-up and reaches farther the longer you focus', 'Guanyin (V) now unlocks a fully reworked Bodhisattva moveset'],
     skills: [
       skill('Z', 'Zero Hand', 0, 8, [3, 24], 'A strike with no wind-up that reaches farther than it should. HOLD to focus for longer reach and heavier damage.', (g, c, ch) => { prep(g, c, 'palm', 0.04, 0.3, col); g.after(0.05, c, () => { beamGold(g, c, 11 + ch * 12, 1.7, 28 + ch * 22, { kb: 9 + ch * 6, stun: 0.4 }); }); }, { charge: 0.8, chargeAnim: 'chargePalm' }),
       skill('X', '10,000 Prayers', 0, 10, [2, 14], 'Close the gap and unleash twelve blinding palm strikes. The last one launches.', (g, c) => {
@@ -96,7 +96,7 @@ export const netero = (old: CharDef): Kit => {
   };
 };
 
-// ============================================================ KITE  –  Crazy Slots (random weapon) – Hallow Scythe / Dragon Trident / Buddy Sword vibes
+// ============================================================ KITE  –  Conjuration: Crazy Slots, one weapon at a time
 export const kite = (old: CharDef): Kit => {
   const col = old.color;
   const gun = (g: Game, c: Fighter, dmg: number, hold = 0) => { const A = g.aim(c); c.faceNow(A.yaw); sfx('zap'); shot(g, c, { pos: c.handPos(), dir: rotY(A.dir, rnd(-0.015, 0.015)), speed: 120, r: 0.7 + hold, dmg, life: 0.6, col, size: 0.7 + hold, shape: 'bullet', pierce: hold > 0.4, opts: { kb: 1 + hold * 6, stun: hold > 0.4 ? 0.4 : 0, heavy: hold > 0.4 } }); };
@@ -109,7 +109,7 @@ export const kite = (old: CharDef): Kit => {
     else { c.setAnim('jabR', 0.3); rush(g, c, A.flat, 12, 0.16, col, 30, { kb: 6, heavy: true }, 3, 3); g.popup(c, '① LANCE', '#ffd0f0', 16); }
   };
   return {
-    notes: ['Inspired by the weapon-swapping swords: Hallow Scythe, Dragon Trident and the Buddy Sword family', 'Crazy Slots rolls scythe / mace / bazooka / lance – a 1-in-12 JACKPOT 7-7-7 fires all four', 'Carbine shots charge into a piercing round'],
+    notes: ['Nen type: Conjuration. A dying man\'s circus of blades, rolled out one weapon at a time', 'Crazy Slots rolls scythe / mace / bazooka / lance – a 1-in-12 JACKPOT 7-7-7 fires all four', 'Carbine shots charge into a piercing round'],
     skills: [
       skill('Z', 'Crazy Slots', 0, 8, [3, 22], 'The roulette spins and conjures a random weapon: scythe sweep, mace smash, bazooka or lance dash. A 1-in-12 JACKPOT fires all four!', (g, c) => {
         prep(g, c, 'summon', 0.18, 0.7, col);
@@ -136,12 +136,12 @@ export const kite = (old: CharDef): Kit => {
   };
 };
 
-// ============================================================ KNOV  –  Portal (blink, rifts) + Control rooms
+// ============================================================ KNOV  –  Emission: doors, rifts, and the room between them
 export const knov = (old: CharDef): Kit => {
   const col = old.color;
   const rift = (g: Game, at: THREE.Vector3, n: THREE.Vector3, r: number, t: number) => g.fx.portal(at.clone().setY(at.y + 1.6), n, r, col, t);
   return {
-    notes: ['Inspired by Portal (blink, linked doors, relocation) – the best bounty-hunting mobility', 'Doors: two linked portals redirect any enemy that touches the entrance', 'Window to the Void deals the biggest single hit but demands closing the gap'],
+    notes: ['Nen type: Emission. Two doors placed in the world, and the small dark room between them', 'Doors: two linked portals redirect any enemy that touches the entrance', 'Window to the Void deals the biggest single hit but demands closing the gap'],
     skills: [
       skill('Z', 'Scream: Window to the Void', 0, 11, [2, 12], 'Dash up to 8m, wrap a portal around the enemy and snap it shut: "CLOSE!" A huge, near-silent hit with a long stun.', (g, c) => {
         const A = prep(g, c, 'castFwd', 0.12, 0.9, col);
@@ -166,7 +166,7 @@ export const knov = (old: CharDef): Kit => {
         g.addZone({ pos: a.clone(), r: 3.2, t: 4.5, owner: c, tick: (gg, z) => { for (const v of gg.enemies(c)) { if (Math.hypot(v.pos.x - a.x, v.pos.z - a.z) < z.r && (v.st.doorT ?? 0) <= 0) { v.st.doorT = 1.5; v.pos.x = b.x + rnd(-1, 1); v.pos.z = b.z + rnd(-1, 1); gg.applySlow(v, 1.5, 0.6); gg.fx.burst(v.chestPos(), col, 10, 6, 0.3); gg.popup(v, 'DOOR', '#c8d0ff', 16); } } for (const v of gg.enemies(c)) if ((v.st.doorT ?? 0) > 0) v.st.doorT -= 0.016; } });
       }),
       skill('V', 'Fourth-Dimension Condominium', 55, 70, [0, 28], 'ULTIMATE (55 energy): open the Condominium – a hidden Nen mansion that rewrites the fight.', (g, c) => old.skills[3].cast(g, c, 0), { can: (_g, c) => !c.form }),
-      skill('F', 'Portal Step', 0, 5, [6, 20], 'Slip through a portal and reappear up to 13m away, blasting anyone near the exit.', (g, c) => {
+      skill('F', 'Portal Step', 0, 5, [6, 20], 'Slip through a rift and reappear up to 13m away, blasting anyone near the exit.', (g, c) => {
         const A = g.aim(c); c.faceNow(A.yaw); const from = gnd(c.pos), to = spot(g, c, 13);
         rift(g, from, V3(A.flat.x, 0, A.flat.z), 2.4, 0.6); rift(g, to, V3(A.flat.x, 0, A.flat.z), 2.4, 0.6);
         sfx('dash'); tele(g, c, to); c.invuln = Math.max(c.invuln, 0.2);
@@ -176,11 +176,11 @@ export const knov = (old: CharDef): Kit => {
   };
 };
 
-// ============================================================ KNUCKLE  –  Buddha/Mammoth bruiser + Dragon Talon finishers
+// ============================================================ KNUCKLE  –  Enhancement: Hakoware debt, a fortress body
 export const knuckle = (old: CharDef): Kit => {
   const col = old.color;
   return {
-    notes: ['Inspired by Buddha (heavy hitting, wide hitbox) and Mammoth (tank) with Dragon Talon finishers', 'Every hit lends aura (Hakoware debt). Collection Mode cashes the debt for damage and heals you', 'Ken (V) is a full guard stance with huge armour'],
+    notes: ['Nen type: Enhancement. A body trained into a fortress, with a debt of aura attached to every punch', 'Every hit lends aura (Hakoware debt). Collection Mode cashes the debt for damage and heals you', 'Ken (V) is a full guard stance with huge armour'],
     skills: [
       skill('Z', 'Loan Strike', 0, 7, [2, 14], 'Lunge and land a heavy punch. Every blow lends the victim aura – building their Hakoware debt.', (g, c) => {
         prep(g, c, 'bodyR', 0.16, 0.5, col);
@@ -200,17 +200,17 @@ export const knuckle = (old: CharDef): Kit => {
           if (total > 0) g.heal(c, total * 0.25);
         });
       }),
-      skill('V', 'Hakoware: Bankruptcy', 55, 70, [0, 20], 'ULTIMATE (55 energy): Ken – 8s of Buddha-grade armour and a debt-collecting aura.', (g, c) => old.skills[3].cast(g, c, 0), { can: (_g, c) => !c.form }),
+      skill('V', 'Hakoware: Bankruptcy', 55, 70, [0, 20], 'ULTIMATE (55 energy): Ken – 8s of total armour and a debt-collecting aura.', (g, c) => old.skills[3].cast(g, c, 0), { can: (_g, c) => !c.form }),
       skill('F', 'Ko Rush', 0, 6, [5, 22], 'A blistering shoulder charge: tramples whoever stands in your way.', (g, c) => { const A = prep(g, c, 'flykick', 0.08, 0.4, col); g.after(0.08, c, () => rush(g, c, A.flat, 11, 0.2, col, 18, { kb: 7, stun: 0.3 }, 4, 3.2)); }),
     ],
   };
 };
 
-// ============================================================ PITOU  –  Ghost/Spirit sustain + Werewolf lifesteal
+// ============================================================ PITOU  –  Specialisation: Doctor Blythe, lifesteal claws
 export const pitou = (old: CharDef): Kit => {
   const col = old.color, MINT = 0x9bffd0;
   return {
-    notes: ['Inspired by Spirit/Ghost (self-sustain, ethereal bolts) and Werewolf (3% lifesteal on claws)', 'Razor Claws and Cat\'s Pounce heal you for part of the damage', 'Doctor Blythe: brief armour + heal over time'],
+    notes: ['Nen type: Specialisation. A conjured physician that eats the wound it stitches', 'Razor Claws and Cat\'s Pounce heal you for part of the damage', 'Doctor Blythe: brief armour + heal over time'],
     skills: [
       skill('Z', 'Razor Claws', 0, 7, [3, 18], 'Blur through the enemy in six razor slashes (heal a sliver on every hit). The last one launches and bleeds.', (g, c) => {
         const A = prep(g, c, 'slashR', 0.1, 0.65, col);

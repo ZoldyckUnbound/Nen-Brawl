@@ -61,6 +61,9 @@ function part(g: THREE.BufferGeometry, color: number, x = 0, y = 0, z = 0, sx = 
   return c;
 }
 const IC = new THREE.IcosahedronGeometry(0.5, 0), CY6 = new THREE.CylinderGeometry(0.5, 0.5, 1, 6).translate(0, 0.5, 0), CO7 = new THREE.ConeGeometry(0.5, 1, 7).translate(0, 0.5, 0);
+/** smooth, stretched blobs – used for canopies and bushes so they stop reading as faceted gravel */
+const ICF = new THREE.IcosahedronGeometry(0.5, 1);
+const SPH8 = new THREE.SphereGeometry(0.5, 9, 6);
 const mk = (parts: THREE.BufferGeometry[]) => mergeGeometries(parts, false)!;
 const VEG: Record<string, THREE.BufferGeometry> = {
   oak: mk([part(CY6, 0x6b4a2a, 0, 0, 0, 0.9, 3.4, 0.9), part(IC, 0x3f8f3f, 0, 3.6, 0, 5.2, 4.2, 5.2), part(IC, 0x4aa04a, 1.3, 4.8, 0.6, 3.4, 3, 3.4), part(IC, 0x358035, -1.4, 4.4, -0.7, 3.6, 3, 3.6)]),
@@ -72,14 +75,38 @@ const VEG: Record<string, THREE.BufferGeometry> = {
   palm: mk([part(CY6, 0x8a6a40, 0, 0, 0, 0.6, 3, 0.6, 0, 0.12), part(CY6, 0x8a6a40, 0.35, 3, 0, 0.5, 3.4, 0.5, 0, 0.2), ...[0, 1, 2, 3, 4, 5].map((i) => part(CO7, 0x4fae52, 0.9 + Math.cos(i * 1.05) * 1.6, 6.4, Math.sin(i * 1.05) * 1.6, 1.2, 3.4, 0.5, 0, 0).rotateY(0)).slice(0, 0), ...[0, 1, 2, 3, 4, 5].map((i) => { const g = part(CO7, i % 2 ? 0x4fae52 : 0x3f9a46, 0, 0, 0, 1.0, 4.2, 0.35); g.rotateZ(Math.PI / 2.3); g.rotateY(i * 1.05); g.translate(0.9, 6.3, 0); return g; })]),
   cactus: mk([part(CY6, 0x4f8f4a, 0, 0, 0, 1.2, 4.6, 1.2), part(CY6, 0x4f8f4a, 1.1, 1.8, 0, 0.7, 1.9, 0.7), part(CY6, 0x4f8f4a, -1.0, 2.6, 0, 0.7, 1.6, 0.7), part(CY6, 0x4f8f4a, 0.6, 1.8, 0, 1.4, 0.6, 0.7)]),
   dead: mk([part(CY6, 0x7a6a58, 0, 0, 0, 0.7, 5, 0.7), part(CY6, 0x7a6a58, 0.9, 3, 0, 0.35, 2.6, 0.35, 0, -0.9), part(CY6, 0x7a6a58, -0.8, 3.6, 0.2, 0.3, 2.2, 0.3, 0, 0.8), part(CY6, 0x7a6a58, 0.1, 4.2, 0.8, 0.25, 1.8, 0.25, 0.8, 0)]),
-  bush: mk([part(IC, 0x3f8a3a, 0, 0.5, 0, 2.2, 1.5, 2.2), part(IC, 0x4a9a44, 0.7, 0.45, 0.4, 1.6, 1.2, 1.6), part(IC, 0xff6a8a, 0.4, 1.1, 0.5, 0.4, 0.4, 0.4)]),
-  rock: mk([part(IC, 0x8a8a92, 0, 0.6, 0, 3.4, 2.4, 3.0), part(IC, 0x7a7a84, 1.4, 0.4, 0.8, 2.0, 1.4, 1.8)]),
+  bush: mk([
+    part(SPH8, 0x3f8a3a, 0, 0.62, 0, 2.5, 1.35, 2.5),
+    part(SPH8, 0x4a9a44, 0.78, 0.5, 0.42, 1.7, 1.05, 1.7),
+    part(SPH8, 0x357f36, -0.7, 0.46, -0.5, 1.5, 0.95, 1.5),
+    part(SPH8, 0x57a850, 0.1, 1.0, -0.75, 1.15, 0.8, 1.15),
+    part(SPH8, 0x468f42, -0.45, 0.95, 0.7, 0.9, 0.65, 0.9),
+    part(SPH8, 0x2c6a2c, 0, 0.1, 0, 2.6, 0.5, 2.6),
+    part(IC, 0xc23b52, 0.62, 1.18, 0.34, 0.16, 0.16, 0.16),
+    part(IC, 0xc23b52, -0.5, 0.98, 0.52, 0.14, 0.14, 0.14),
+    part(IC, 0xc23b52, 0.12, 1.28, -0.5, 0.13, 0.13, 0.13),
+  ]),
+  rock: mk([part(ICF, 0x8a8a92, 0, 0.6, 0, 3.4, 2.4, 3.0), part(ICF, 0x7a7a84, 1.4, 0.4, 0.8, 2.0, 1.4, 1.8), part(IC, 0x9a9aa2, -0.5, 1.25, -0.2, 1.2, 0.9, 1.1)]),
   boulder: mk([part(IC, 0x9a948a, 0, 2, 0, 9, 6, 8), part(IC, 0x8a8478, 3.4, 1.2, 1.6, 5, 3.4, 4.6), part(IC, 0xa8a296, -2.8, 1.4, -1.4, 4.4, 3, 4)]),
   spire: mk([part(CY6, 0xb0663a, 0, 0, 0, 5, 7, 5), part(CY6, 0xc8844a, 0, 7, 0, 4, 5, 4), part(CY6, 0xa85a34, 0, 12, 0, 3.2, 6, 3.2), part(CY6, 0xd8a060, 0, 18, 0, 5.6, 1.6, 5.6), part(CO7, 0xb0663a, 0, 19.6, 0, 3, 2.4, 3)]),
   stump: mk([part(CY6, 0x6b4a2a, 0, 0, 0, 1.2, 0.8, 1.2), part(CY6, 0xb08a58, 0, 0.78, 0, 1.0, 0.06, 1.0), part(CY6, 0x5a3e24, 0.9, 0, 0.2, 0.5, 0.35, 0.5)]),
   log: mk([part(CY6, 0x5a3e24, 2.2, 0.55, 0, 1.1, 4.4, 1.1, 0, Math.PI / 2), part(CY6, 0x8a6a3a, -2.18, 0.55, 0, 0.9, 0.06, 0.9, 0, Math.PI / 2), part(IC, 0x4a8a3a, 0.4, 1.05, 0.2, 1.2, 0.5, 0.9)]),
-  shrub: mk([part(IC, 0x4a9a44, 0, 0.6, 0, 2.6, 1.8, 2.6), part(IC, 0x3a8a3c, 0.9, 0.4, 0.5, 1.8, 1.3, 1.8), part(IC, 0x5aaa4a, -0.8, 0.5, -0.4, 1.6, 1.2, 1.6)]),
-  flowers: mk([...[0, 1, 2, 3, 4, 5].map((i) => part(IC, [0xff6a8a, 0xffd24a, 0xffffff, 0xb06bff, 0xff9a4a, 0x6ad0ff][i], Math.cos(i * 1.1) * 0.9, 0.25, Math.sin(i * 1.1) * 0.9, 0.34, 0.34, 0.34)), part(IC, 0x4a9a44, 0, 0.12, 0, 2.2, 0.3, 2.2)]),
+  shrub: mk([
+    part(SPH8, 0x4a9a44, 0, 0.52, 0, 2.4, 1.15, 2.4),
+    part(SPH8, 0x3a8a3c, 0.95, 0.4, 0.45, 1.6, 0.9, 1.6),
+    part(SPH8, 0x5aaa4a, -0.85, 0.42, -0.35, 1.4, 0.8, 1.4),
+    part(SPH8, 0x2f7030, 0.15, 0.82, -0.7, 1.0, 0.62, 1.0),
+    part(SPH8, 0x2f7030, 0, 0.08, 0, 2.5, 0.45, 2.5),
+  ]),
+  flowers: mk([
+    part(SPH8, 0x4f9a45, 0, 0.08, 0, 2.4, 0.34, 2.4),
+    ...[0, 1, 2, 3, 4, 5, 6, 7].map((i) => {
+      const a = i * 1.1, r0 = 0.45 + (i % 3) * 0.32;
+      const g = part(CO7, 0x5aa04a, Math.cos(a) * r0, 0.1, Math.sin(a) * r0, 0.07, 0.5 + (i % 2) * 0.2, 0.07);
+      const p = part(IC, [0xff7a92, 0xffd24a, 0xfdf6ea, 0xb98aff, 0xffa35a, 0x8fdcff][i % 6], Math.cos(a) * r0, 0.58 + (i % 2) * 0.2, Math.sin(a) * r0, 0.3, 0.2, 0.3);
+      return [g, p];
+    }).flat(),
+  ]),
   reed: mk([...[0, 1, 2, 3, 4].map((i) => part(CO7, 0x7a9a4a, Math.cos(i * 1.3) * 0.5, 0, Math.sin(i * 1.3) * 0.5, 0.18, 2.6 + (i % 3) * 0.5, 0.18))]),
 };
 const VEG_CAP: Record<string, number> = { oak: 9000, oak2: 7000, pine: 9000, snowpine: 3000, birch: 3000, jungle: 3000, palm: 1500, cactus: 3000, dead: 2000, bush: 5000, rock: 4000, boulder: 1500, spire: 1200, stump: 2500, log: 2500, shrub: 6000, flowers: 6000, reed: 3000 };
@@ -146,6 +173,28 @@ export function buildGreedIsland(): GreedWorld {
       segs.push({ x1: px, z1: pz, x2: x, z2: z, w: 7.5 }); px = x; pz = z;
     }
   }
+  // ------------------------------------------------ harbours & causeways
+  // Some towns are peninsulas (Soufrabi, the port, Dorias' bay): the shortest road between them and the next
+  // town runs over open water. Rather than paint a road on the seabed we lift the ground into a stone causeway
+  // and keep the dry stretches as ordinary road. Every point of the island – roads included – is then walkable.
+  const pierSegs: typeof segs = [];
+  const isWet = (x: number, z: number) => T.naturalAt(x, z) < 1.4;
+  for (const sg of segs) {
+    const L = Math.hypot(sg.x2 - sg.x1, sg.z2 - sg.z1);
+    const n = Math.max(2, Math.ceil(L / 18));
+    let run: typeof segs = [];
+    const flush = () => { if (run.length) { pierSegs.push(...run); run = []; } };
+    for (let i = 0; i < n; i++) {
+      const t0 = i / n, t1 = (i + 1) / n;
+      const ax = sg.x1 + (sg.x2 - sg.x1) * t0, az = sg.z1 + (sg.z2 - sg.z1) * t0;
+      const bx = sg.x1 + (sg.x2 - sg.x1) * t1, bz = sg.z1 + (sg.z2 - sg.z1) * t1;
+      const wet = isWet((ax + bx) / 2, (az + bz) / 2);
+      if (wet) run.push({ x1: ax, z1: az, x2: bx, z2: bz, w: 9.5 });
+      else flush();
+    }
+    flush();
+  }
+  T.setPierSegs(pierSegs);
   T.setRoadSegs(segs);
   const groundAt = T.groundAt;
   T.setGround(groundAt, (x, z) => groundAt(x, z) < T.DEEP);
@@ -156,7 +205,10 @@ export function buildGreedIsland(): GreedWorld {
   const claimGrid = new Map<number, { x: number; z: number; r: number }[]>();
   let curGy = 0;
   const indoorSpots: { x: number; z: number }[] = [];
+  /** every street lamp / lantern in the world – drives the pooled point lights (see setFocus) */
+  const lampSpots: { x: number; y: number; z: number; col: number }[] = [];
   const anim: ((t: number) => void)[] = [];
+  let lampX = 1e9, lampZ = 1e9;
   const tgroup = new THREE.Group();
   group.add(tgroup);
   const addItem = (layer: string, x: number, y: number, z: number, sx: number, sy: number, sz: number, ry: number, color: number, glow = 0) => {
@@ -170,6 +222,7 @@ export function buildGreedIsland(): GreedWorld {
   const ctx: Ctx = {
     add: addItem, circle: (x, z, r, h, flat) => { if (flat) addFlat(x, z, r, T.groundAt(x, z) + h); else addOb(x, z, r, h); }, group: tgroup, anim, R, gy: 0,
     indoor: (x, z) => indoorSpots.push({ x, z }),
+    lampAdd: (x, y, z, col) => lampSpots.push({ x, y: y + curGy, z, col }),
     claim: (x, z, r) => {
       const kx = Math.floor(x / 48), kz = Math.floor(z / 48);
       for (let i = kx - 2; i <= kx + 2; i++) for (let j = kz - 2; j <= kz + 2; j++) { const a = claimGrid.get(i * 8192 + j); if (a) for (const c of a) if (Math.hypot(c.x - x, c.z - z) < c.r + r) return false; }
@@ -239,9 +292,10 @@ export function buildGreedIsland(): GreedWorld {
   for (const ch of tchunks.values()) {
     const g = new THREE.Group();
     for (const [layer, items] of Object.entries(ch.items)) {
+      const emissive = layer.endsWith('E');
       let base = instKey(layer);
       let geo = GEO[base];
-      let mat: THREE.Material = layer.endsWith('E') ? MAT_E : MAT_L;
+      let mat: THREE.Material = emissive ? MAT_E : MAT_L;
       if (base === 'oakT') { geo = VEG.oak; mat = VEG_MAT; }
       if (base === 'pineT') { geo = VEG.pine; mat = VEG_MAT; }
       if (!geo) { base = 'box'; geo = GEO.box; }
@@ -435,9 +489,12 @@ export function buildGreedIsland(): GreedWorld {
     while (n-- > 0 && queue.length) {
       const q = queue.shift()!;
       if (q.kind === 'n') {
-        const m = makeTerrain(q.kx * NEAR, q.kz * NEAR, NEAR, NSEG, 0); terrainGroup.add(m); nearMeshes.set(q.kx + ',' + q.kz, m);
+        // a half-tile overlap into every neighbouring chunk: the fine mesh and the coarse mesh sampling the
+        // same analytic height are never exactly equal, and without the skirt that tiny difference opened a
+        // hairline crack (a visible "broken strip" of sky or old mesh) wherever two tiles met
+        const m = makeTerrain(q.kx * NEAR - 4, q.kz * NEAR - 4, NEAR + 8, NSEG + 1, 0); terrainGroup.add(m); nearMeshes.set(q.kx + ',' + q.kz, m);
       } else {
-        const m = makeTerrain(q.kx * FAR, q.kz * FAR, FAR, FSEG, -4); m.visible = Math.hypot((q.kx + 0.5) * FAR - fx, (q.kz + 0.5) * FAR - fz) > 3 * NEAR + 520; terrainGroup.add(m); farMeshes.set(q.kx + ',' + q.kz, m);
+        const m = makeTerrain(q.kx * FAR - 8, q.kz * FAR - 8, FAR + 16, FSEG + 1, -4); m.visible = Math.hypot((q.kx + 0.5) * FAR - fx, (q.kz + 0.5) * FAR - fz) > 3 * NEAR + 520; terrainGroup.add(m); farMeshes.set(q.kx + ',' + q.kz, m);
       }
     }
   }
@@ -483,6 +540,45 @@ export function buildGreedIsland(): GreedWorld {
     const m = new THREE.Mesh(g, riverMat); m.renderOrder = 2; m.frustumCulled = false; group.add(m);
   }
 
+  // ------------------------------------------------ causeway decks: pale stone walkways over the water.
+  // The height-field already lifts the seabed into a solid pier; these thin, slatted decks sit on top of it so a
+  // harbour road reads as a harbour road (and its lamps line it) instead of a line of wet sand in the sea.
+  {
+    const deckMat = new THREE.MeshLambertMaterial({ color: 0xb9b3a4 });
+    const railMat = new THREE.MeshLambertMaterial({ color: 0x6f6a60 });
+    const pillars: THREE.Matrix4[] = [];
+    const dummyD = new THREE.Object3D();
+    for (const sg of pierSegs) {
+      const L = Math.hypot(sg.x2 - sg.x1, sg.z2 - sg.z1);
+      if (L < 0.5) continue;
+      const ry = Math.atan2(sg.x2 - sg.x1, sg.z2 - sg.z1);
+      const mx = (sg.x1 + sg.x2) / 2, mz = (sg.z1 + sg.z2) / 2;
+      const gy = T.groundAt(mx, mz);
+      const deck = new THREE.Mesh(new THREE.BoxGeometry(sg.w, 0.5, L + 1.2), deckMat);
+      deck.position.set(mx, gy + 0.1, mz); deck.rotation.y = ry; deck.receiveShadow = true; group.add(deck);
+      // low kerbs on both sides
+      for (const sd of [-1, 1]) {
+        const kerb = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.7, L + 1.2), railMat);
+        kerb.position.set(mx + Math.cos(ry) * sd * (sg.w / 2 - 0.3), gy + 0.45, mz - Math.sin(ry) * sd * (sg.w / 2 - 0.3));
+        kerb.rotation.y = ry; group.add(kerb);
+      }
+      // a pile at either end and one in the middle
+      for (let t = 0; t <= 1.001; t += 0.5) {
+        const px = sg.x1 + (sg.x2 - sg.x1) * t, pz = sg.z1 + (sg.z2 - sg.z1) * t;
+        for (const sd of [-1, 1]) {
+          dummyD.position.set(px + Math.cos(ry) * sd * (sg.w / 2 - 0.7), T.groundAt(px, pz) - 4, pz - Math.sin(ry) * sd * (sg.w / 2 - 0.7));
+          dummyD.scale.set(0.9, 9, 0.9); dummyD.updateMatrix(); pillars.push(dummyD.matrix.clone());
+        }
+      }
+    }
+    if (pillars.length) {
+      const im = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.5, 0.62, 1, 6), railMat, pillars.length);
+      im.frustumCulled = false;
+      pillars.forEach((m, i) => im.setMatrixAt(i, m));
+      group.add(im);
+    }
+  }
+
   // ------------------------------------------------ sky, clouds, barrier
   const skyMat = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false,
@@ -490,8 +586,8 @@ export function buildGreedIsland(): GreedWorld {
     vertexShader: 'varying vec3 vD; void main(){ vD = normalize(position); gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
     fragmentShader: 'uniform vec3 top; uniform vec3 hor; uniform vec3 sun; varying vec3 vD; void main(){ vec3 d = normalize(vD); float h = clamp(d.y*1.25+0.03,0.,1.); vec3 c = mix(hor, top, pow(h,0.5)); float s = max(dot(d,sun),0.); c += vec3(1.0,0.86,0.6)*pow(s,900.)*3.0 + vec3(1.0,0.8,0.5)*pow(s,10.)*0.18; c = mix(c, hor, smoothstep(0.0,-0.25,d.y)); gl_FragColor = vec4(c,1.0); }',
   });
-  const sky = new THREE.Mesh(new THREE.SphereGeometry(9000, 24, 16), skyMat);
-  sky.renderOrder = -10; sky.frustumCulled = false; group.add(sky);
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(5200, 32, 20), skyMat);
+  sky.renderOrder = -11; sky.frustumCulled = false; group.add(sky);
   const cloudG = new THREE.Group();
   const cm = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.86, fog: false, depthWrite: false });
   for (let i = 0; i < 70; i++) {
@@ -521,6 +617,40 @@ export function buildGreedIsland(): GreedWorld {
     (bring.material as THREE.MeshBasicMaterial).color.setHSL(0.74 - level * 0.7, 0.9, 0.7).multiplyScalar(2);
   };
   setBarrier(MAP_R, 0, false);
+
+  // ------------------------------------------------ pooled town lighting: 6 real point lights that re-home to the
+  // nearest lamps (or flying lanterns) as the player moves. Each lamp therefore throws actual light on the
+  // road and walls around it – the glow, the lit flagstones and the shadows all stay anchored in the world
+  // and can never change just because the camera moved.
+  const LAMP_POOL = 6;
+  const pool = { list: [] as THREE.PointLight[], idx: -1, t: 0, last: [] as number[] };
+  for (let i = 0; i < LAMP_POOL; i++) {
+    const l = new THREE.PointLight(0xffd9a0, 0, 34, 1.7);
+    l.castShadow = false;
+    group.add(l);
+    pool.list.push(l);
+  }
+  const NEAR_LAMP: { s: { x: number; y: number; z: number; col: number }; d: number }[] = [];
+  function assignLights(x: number, z: number) {
+    NEAR_LAMP.length = 0;
+    for (const s of lampSpots) {
+      const d = Math.hypot(s.x - x, s.z - z);
+      if (d > 210) continue;
+      NEAR_LAMP.push({ s, d });
+    }
+    NEAR_LAMP.sort((a, b) => a.d - b.d);
+    for (let i = 0; i < pool.list.length; i++) {
+      const p = pool.list[i];
+      const e = NEAR_LAMP[i];
+      if (!e) { p.intensity = 0; continue; }
+      const fall = 1 - Math.min(1, e.d / 190);
+      p.position.set(e.s.x, e.s.y + 3.4, e.s.z);
+      p.color.setHex(e.s.col);
+      // inverse-square-ish falloff baked into a friendly level: strong close, gone past ~120 m
+      p.intensity = 26 * fall * fall + 7 * fall;
+      p.distance = 44;
+    }
+  }
 
   // ------------------------------------------------ world atlas (detailed) + island chart (outline only)
   const MS = 704, MW = T.WORLD_W;
@@ -588,16 +718,28 @@ export function buildGreedIsland(): GreedWorld {
   const ranges: { g: THREE.Group; cx: number; cz: number }[] = tileGroups;
   const world: GreedWorld = {
     name: 'Greed Island', group, obstacles, radius: MAP_R, mapCanvas: cv, chartCanvas: chartCv, secretSpots, mapW: MW, vegOn: true, near, blocked, chestSpots, lootSpots, herbSpots, groundAt,
-    env: { sky: 0xc4dff3, fog: 0xc6e0f2, fogN: 260, fogF: 4400, hemiS: 0xcfe8ff, hemiG: 0x7a9a5a, hemiI: 2.0, sunC: 0xfff0d2, sunI: 2.8 },
+    env: { sky: 0xc4dff3, fog: 0xc6e0f2, fogN: 900, fogF: 5200, hemiS: 0xcfe8ff, hemiG: 0x7a9a5a, hemiI: 2.0, sunC: 0xfff0d2, sunI: 2.8 },
     prime(x, z) { refocus(x, z); pump(9999); vegSig = ''; vegTick(x, z, 9999); for (const t of ranges) t.g.visible = Math.hypot(t.cx - x, t.cz - z) < 2600; },
     setFocus(x, z, range = 2800) {
-      sky.position.set(x, 0, z);
+      pool.t += 0.0001;
+      if (lampX > 1e8 || Math.hypot(x - lampX, z - lampZ) > 12) { lampX = x; lampZ = z; assignLights(x, z); }
       sea2.position.set(Math.round(x / 64) * 64, T.SEA_Y, Math.round(z / 64) * 64); deepFloor.position.set(x, -14, z);
+      // the dome rides with the camera target so the horizon never depends on where the player is standing
+      sky.position.set(x, 320, z);
       refocus(x, z); pump(3); vegTick(x, z);
       for (const c of ranges) c.g.visible = Math.hypot(c.cx - x, c.cz - z) < range;
     },
     setBarrier,
     update(dt, time) {
+      // a slow, per-lamp flicker keeps the pooled lights feeling like fireflies / gas lanterns rather than a flat wash
+      for (let i = 0; i < pool.list.length; i++) {
+        const p = pool.list[i];
+        if (p.intensity <= 0) continue;
+        const e = 0.92 + Math.sin(time * 5.1 + i * 2.3) * 0.05 + Math.sin(time * 13.7 + i) * 0.03;
+        const k = e / (pool.last[i] ?? 1);
+        p.intensity *= k * (p.intensity > 40 ? 0.995 : 1.0);
+        pool.last[i] = e;
+      }
       bmat.uniforms.time.value = time;
       cloudG.rotation.y += dt * 0.002;
       ntex.offset.set(time * 0.012, time * 0.008);

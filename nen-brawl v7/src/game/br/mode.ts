@@ -9,6 +9,7 @@ import { buildGreedIsland, type GreedWorld } from './world';
 import { attachCreature, updateCreature } from '../creatures';
 import { Cutscene, CUT, CUT_LEN, CUT_TP } from './cutscene';
 import * as T from '../terrain';
+import { markExplored, seedChart, setAtlas } from './explore';
 import {
   CARDS, SPELL_IDS, BARRIER_T, RANK_COLOR, RANK_VALUE, ZONE_PHASES, MONS, POIS, DUNGEONS, MAP_R, CHAT, poi, rollCard, rollRank, resetIssued,
   makePersonalities, makeNames, type Rank, type Pers, type MonDef, type Card, type Pass, type Poi,
@@ -27,6 +28,7 @@ const START_J = 3000;
 const EXPECT: [number, number][] = [[0, 100], [200, 98], [700, 90], [1200, 74], [1700, 52], [2200, 30], [2600, 15], [2900, 5], [3000, 2]];
 const expectedAlive = (t: number) => { for (let i = 1; i < EXPECT.length; i++) if (t < EXPECT[i][0]) { const [t0, a0] = EXPECT[i - 1], [t1, a1] = EXPECT[i]; return a0 + ((a1 - a0) * (t - t0)) / (t1 - t0); } return 1; };
 
+interface BotQuest { id: string; step: number; done: boolean; at: number }
 interface Bot {
   id: number; name: string; kind: PlayableKind; team: number; pers: Pers; x: number; z: number; hp: number; maxHp: number; level: number; alive: boolean;
   inv: string[]; jenny: number; kills: number; state: 'travel' | 'work' | 'fight' | 'zone' | 'flee' | 'dead'; stateT: number; goal: { x: number; z: number } | null; work: string;
@@ -34,13 +36,15 @@ interface Bot {
   tgt: Fighter | null; tgtT: number; react: number; seen: boolean; spellT: number; fleeing: number; met: boolean;
   /** per-bot memory: strategy, risk appetite, known players, grudges, pacts */
   m: Record<string, any>;
+  /** the NPC mission this bot has accepted and is currently running (null = none) */
+  q: BotQuest | null;
 }
 interface Pickup { id: number; x: number; z: number; card?: string; jenny?: number; herb?: boolean; rank: Rank; ttl: number }
 interface Chest { id: number; x: number; z: number; tier: number; opened: boolean; big?: boolean; name?: string; guard?: number[] }
 interface MonSp { id: number; def: MonDef; x: number; z: number; hx: number; hz: number; hp: number; alive: boolean; f: Fighter | null; name: string; atkT: number; windT: number; spawned: boolean }
 interface Npc { id: string; name: string; x: number; z: number; f: Fighter | null; tint: number; yaw: number; variant: number }
 interface FieldZone { x: number; z: number; r: number; t: number; max: number; heal: number; slow: number; imm: boolean; dps: number; dmg: number; team: string; color: number; acc: number }
-interface Quest { id: string; title: string; desc: string; prog: number; goal: number; reward: string; done: boolean }
+interface Quest { id: string; title: string; desc: string; prog: number; goal: number; reward: string; done: boolean; owner?: Bot | null }
 interface Summon { f: Fighter; until: number; owner: Fighter }
 interface Team { id: number; members: Bot[]; hasPlayer: boolean; place: number }
 
@@ -81,6 +85,30 @@ const QUESTS: Record<string, { title: string; desc: string; goal: number; reward
   k_wolf: { title: 'Wolf Pack', desc: 'Defeat 6 wolves for the bandit elder', goal: 6, reward: 'A C-rank card + Jenny' },
   k_beetle: { title: 'King of Insects', desc: 'Defeat a King White Stag Beetle', goal: 1, reward: 'An A-rank card' },
   wander: { title: 'Grand Tour', desc: 'Visit 5 different cities', goal: 5, reward: 'Map bonus: S-rank card' },
+};
+/**
+ * Every open mission, as a bot understands it: what has to be *reached* first, which NPC hands it out, and
+ * how it is finished. Bots do not "pretend" to quest any more – they walk to the giver, take the contract,
+ * travel to the target, fight what has to be fought and collect from whoever pays.
+ */
+interface Mission { poi: string; npc?: string; kind: 'kill' | 'reach' | 'touch'; mon?: string; count?: number; at?: string[] }
+const MISSIONS: Record<string, Mission[]> = {
+  orient: [{ poi: 'antokiba', kind: 'touch' }, { poi: 'masadora', kind: 'touch' }],
+  prize: [{ poi: 'antokiba', kind: 'kill', mon: 'champion' }],
+  k_parcel: [{ poi: 'masadora', npc: 'courier1', kind: 'reach', at: ['dorias'] }],
+  k_courier: [{ poi: 'port', npc: 'courier2', kind: 'reach', at: ['soufrabi'] }],
+  k_golem: [{ poi: 'badlands', npc: 'miner', kind: 'kill', mon: 'golem' }],
+  cyclops: [{ poi: 'badlands', npc: 'biscuit', kind: 'kill', mon: 'cyclops', count: 3 }],
+  herbs: [{ poi: 'bandits', npc: 'sick', kind: 'touch', count: 4 }],
+  pirates: [{ poi: 'soufrabi', npc: 'razor', kind: 'kill', mon: 'captain' }],
+  k_locust: [{ poi: 'rubicuta', npc: 'farmer', kind: 'kill', mon: 'locust', count: 7 }],
+  k_puffball: [{ poi: 'bunzen', npc: 'herbalist', kind: 'kill', mon: 'puffball', count: 3 }],
+  k_bubblehorse: [{ poi: 'dodgeball', npc: 'stable', kind: 'kill', mon: 'bubble', count: 1 }],
+  k_rat: [{ poi: 'soufrabi', npc: 'fisher', kind: 'kill', mon: 'rat', count: 8 }],
+  k_lizard: [{ poi: 'badlands', npc: 'ranger', kind: 'kill', mon: 'lizard' }],
+  k_wolf: [{ poi: 'bandits', npc: 'elder', kind: 'kill', mon: 'wolf', count: 6 }],
+  k_beetle: [{ poi: 'mansion', npc: 'butler', kind: 'kill', mon: 'beetle' }],
+  wander: [{ poi: 'antokiba', kind: 'touch' }, { poi: 'masadora', kind: 'touch' }, { poi: 'dorias', kind: 'touch' }, { poi: 'aiai', kind: 'touch' }, { poi: 'soufrabi', kind: 'touch' }],
 };
 const EXTRA_REWARD: Record<string, (b: BR) => void> = {
   k_locust: (b) => { b.addCard(rollRank('C')); b.addJenny(1800); },
@@ -137,6 +165,9 @@ export class BR {
   binderOpen = false; mapOpen = false; dialog: Dialog | null = null; dialogNpc = ''; quests: Quest[] = []; feed: { text: string; color: string; t: number }[] = []; toasts: { text: string; color: string; t: number }[] = [];
   casting: { name: string; t: number; max: number; cid: number } | null = null; useCd = 0; combatT = 0;
   sp = { x: 0, z: 0 }; pidSeq = 1; nextId = 1; result: BrHudState['result'] = null; warn = ''; warnT = 0;
+  repAcc = 0;
+  /** the entity the touch INTERACT button should act on (same one the prompt is drawn for) */
+  nearIt: { kind: string; id: string; text: string } | null = null;
   scanT = 0; scanR = 0; scanAll = false; espT = 0; espR = 0; espThrough = false; traced: Bot | null = null; traceT = 0; richT = 0;
   dodge: { t: number; lives: number; ballT: number; razor: Fighter | null } | null = null;
   trade: { bot: Bot; give: string; want: string } | null = null; tradeT = 60; hunterT = 100; boss: MonSp | null = null; bossDone = false; drops = 0; surgeT = 0; surgeBase = 0;
@@ -221,7 +252,7 @@ export class BR {
         const b: Bot = {
           id, name: names[id], kind, team: tI, pers, x: sp.x + Math.cos(m * 1.7) * 3, z: sp.z + Math.sin(m * 1.7) * 3, hp: def.hp, maxHp: def.hp, level: 1, alive: true,
           inv: [...(Math.random() < 0.1 ? ['s100'] : Math.random() < 0.55 ? ['s101'] : []), pick(['p1003', 'p1001', 'p1009', 'p1025']), pick(['p1038', 'p1031', 'p1019', 'p1002'])], jenny: START_J + Math.floor(rand(-800, 1500)), kills: 0, state: 'work', stateT: rand(3, 9), goal: null, work: 'loot',
-          fightT: 0, foe: null, f: null, shield: 0, revealT: 0, hideT: 0, chatT: rand(10, 45), hostile: false, ally: tI === 0, cp: 1, tgt: null, tgtT: 0, react: 0, seen: false, spellT: rand(8, 30), fleeing: 0, met: false, m: {},
+          fightT: 0, foe: null, f: null, shield: 0, revealT: 0, hideT: 0, chatT: rand(10, 45), hostile: false, ally: tI === 0, cp: 1, tgt: null, tgtT: 0, react: 0, seen: false, spellT: rand(8, 30), fleeing: 0, met: false, m: {}, q: null,
         };
         this.bots.push(b);
         this.teams[tI].members.push(b);
@@ -338,7 +369,7 @@ export class BR {
     const t = this.cutT, g = this.g, s = poi('shiso');
     const fog = g.scene.fog as THREE.Fog | null;
     if (this.cs) this.cutFlash = this.cs.update(t, dt, s, () => { const p = g.player; p.st.pin = 0; p.pos.set(s.x, T.groundAt(s.x, s.z + 24), s.z + 24); p.vy = 0; p.faceNow(Math.PI); g.camYaw = Math.PI; });
-    if (t >= 46.2 && !this.fogDone && fog) { this.fogDone = true; fog.near = this.world.env.fogN * 2; fog.far = this.world.env.fogF * 1.6; fog.color.set(this.world.env.fog); }
+    if (t >= 46.2 && !this.fogDone && fog) { this.fogDone = true; fog.near = this.world.env.fogN; fog.far = this.world.env.fogF * 1.3; fog.color.set(this.world.env.fog); }
     if (t >= CUT_TP && !this.cutDone) { g.flash('#ffffff', 0.9); sfx('boom'); this.teleportAll(); }
     if (t >= CUT_LEN) { this.cutActive = false; this.finishStart(); }
     if (t >= 46.2) { this.world.vegOn = this.camPos.y < 260; this.world.setFocus(this.camPos.x, this.camPos.z, 3600); } else this.world.setFocus(s.x, s.z, 600);
@@ -443,6 +474,8 @@ export class BR {
     if (c.kind === 'spell' && this.spellCount >= MAX_SPELLS) { this.toast('Free-slot pockets are full! Use or drop a spell.', '#ff9a9a'); return false; }
     this.inv.push(id);
     this.cardsFound++;
+    if (id === 's100' || id === 's101') seedChart();
+    if (id === 's100') setAtlas(true);
     this.recompute();
     if (!quiet) {
       this.toast(`+ ${c.name} [${c.rank}]`, RANK_COLOR[c.rank]);
@@ -509,14 +542,16 @@ export class BR {
     sfx('ui');
     if (id === 'prize') this.spawnChampion('Contest Champion', poi('antokiba'), 'prize');
   }
-  progress(id: string, n = 1) {
-    const q = this.quests.find((x) => x.id === id && !x.done);
+  /** progress *your* mission only – bots run their own copies of the same contracts */
+  progress(id: string, n = 1, owner: Bot | null = null) {
+    const q = this.quests.find((x) => x.id === id && !x.done && (x.owner ?? null) === owner);
     if (!q) return;
     q.prog = Math.min(q.goal, q.prog + n);
     if (q.prog >= q.goal) this.completeQuest(q);
   }
   private completeQuest(q: Quest) {
     q.done = true;
+    if (q.owner) { this.finishBotQuest(q.owner, q); return; }
     sfx('level');
     this.toast(`MISSION COMPLETE: ${q.title}`, '#7dff9a');
     switch (q.id) {
@@ -529,6 +564,124 @@ export class BR {
     }
     EXTRA_REWARD[q.id]?.(this);
     window.setTimeout(() => { this.quests = this.quests.filter((x) => x !== q); }, 6000);
+  }
+
+  // ------------------------------------------------------------------ bot missions
+  private questGiver(id: string) {
+    const m = MISSIONS[id]?.[0];
+    if (!m) return null;
+    if (m.npc) return { id: m.npc, name: EXTRA_NPCS.find((n) => n.id === m.npc)?.name ?? 'Villager' };
+    return { id: 'eta', name: 'Eta · Game Master' };
+  }
+  /** the monster species a mission wants, as it is actually spawned in the field */
+  private missionMon(id: string) {
+    const want = MISSIONS[id]?.find((m) => m.mon)?.mon ?? '';
+    const alias: Record<string, string> = { locust: 'locust', hat: 'rat', puffball: 'puffball', bubble: 'bubblehorse', wolf: 'wolf', lizard: 'lizard', beetle: 'beetle', golem: 'golem', cyclops: 'cyclops', captain: 'captain', champion: 'champion' };
+    return alias[want] ?? want;
+  }
+  /** where a mission physically happens */
+  private missionTarget(id: string): { x: number; z: number } | null {
+    const ms = MISSIONS[id];
+    if (!ms) return null;
+    const m = ms[0];
+    const p = poi(m.at ? m.at[0] : m.poi);
+    return p ? { x: p.x + rand(-26, 26), z: p.z + rand(-26, 26) } : null;
+  }
+  /** the monster this mission needs, if it is close enough to fight */
+  private missionMonster(b: Bot): MonSp | null {
+    const q = b.q; if (!q) return null;
+    const mid = this.missionMon(q.id); if (!mid) return null;
+    let best: MonSp | null = null, bd = 1e9;
+    for (const mo of this.mons) {
+      if (!mo.alive || !mo.def.id.includes(mid)) continue;
+      const d = Math.hypot(mo.x - b.x, mo.z - b.z);
+      if (d < bd && d < 460) { bd = d; best = mo; }
+    }
+    return best;
+  }
+  /** a bot walks up to an NPC and takes a contract – only where the island actually posts one */
+  private takeQuest(b: Bot, id: string): boolean {
+    if (this.quests.some((q) => q.id === id && q.owner === b)) return false;
+    const giver = this.questGiver(id);
+    if (!giver) return false;
+    const d = QUESTS[id];
+    this.quests.push({ id, title: d.title, desc: d.desc, prog: 0, goal: d.goal, reward: d.reward, done: false, owner: b });
+    b.q = { id, step: 0, done: false, at: this.t };
+    this.feedAdd(`${b.name} took on “${d.title}” from ${giver.name}`, '#d8c8ff');
+    if (id === 'prize') this.spawnChampion('Contest Champion', poi('antokiba'), 'prize', b);
+    return true;
+  }
+  private finishBotQuest(b: Bot, q: Quest) {
+    const m = this.mem(b), P = b.pers;
+    const give = (id: string) => { b.inv.push(id); if (b.inv.length > 40) { let wi = 0, wv = 1e9; b.inv.forEach((c, i) => { const v = RANK_VALUE[CARDS[c].rank]; if (v < wv && c !== 's017' && c !== 's100' && c !== 's101') { wv = v; wi = i; } }); b.inv.splice(wi, 1); } };
+    // the same reward table the player gets, paid into the bot's own binder
+    switch (q.id) {
+      case 'orient': give('s101'); b.jenny += 2000; break;
+      case 'prize': give('s083'); b.jenny += 2000; break;
+      case 'cyclops': give('s070'); b.jenny += 2500; break;
+      case 'herbs': give('s075'); break;
+      case 'pirates': give('s081'); break;
+      default: {
+        const rk = pick<Rank>(['C', 'D', 'B', 'A']);
+        give(rollRank(rk)); b.jenny += Math.round(rand(900, 2600) * (1 + P.greed));
+      }
+    }
+    if (Math.random() < 0.25 + P.skill * 0.2) give(rollCard(1, P.greed * 0.06, 0.7));
+    b.level = Math.min(9, b.level + (Math.random() < 0.3 ? 1 : 0));
+    b.q = null;
+    m.qDone = (m.qDone ?? 0) + 1;
+    this.feedAdd(`${b.name} completed “${q.title}”`, '#9aff9a');
+    this.quests = this.quests.filter((x) => x !== q);
+  }
+
+  /** one decision step of a bot's mission: travel → hunt/work → report → collect, with a hard timeout */
+  private questStep(b: Bot) {
+    const q = b.q!;
+    const ms = MISSIONS[q.id];
+    if (!ms) { b.q = null; return; }
+    // long missions must not stall the whole match
+    if (this.t - q.at > 480) {
+      this.feedAdd(`${b.name} gave up on “${QUESTS[q.id].title}”`, '#c8b8a0');
+      b.q = null;
+      this.quests = this.quests.filter((x) => !(x.id === q.id && x.owner === b));
+      return;
+    }
+    if (this.t - q.at < 2.5) return;                  // stand and talk to the giver for a moment
+    if (b.state === 'fight') return;                   // the fight itself is driven by botAI
+    const qq = this.quests.find((x) => x.id === q.id && x.owner === b);
+    if (!qq) { b.q = null; return; }
+    if (qq.prog >= qq.goal) {
+      // done – walk back and get paid
+      const giver = this.questGiver(q.id);
+      const n = giver && this.npcs.find((x) => x.id === giver.id);
+      if (!n) { this.finishBotQuest(b, qq); return; }
+      if (Math.hypot(n.x - b.x, n.z - b.z) > 6) { b.goal = { x: n.x + rand(-4, 4), z: n.z + rand(-4, 4) }; b.state = 'travel'; b.work = 'quest'; return; }
+      this.finishBotQuest(b, qq);
+      return;
+    }
+    const step = ms[Math.min(q.step, ms.length - 1)];
+    // a beast contract is only ticked by actually killing the beast (see creditKill), never by standing there
+    if (step.kind === 'kill') {
+      // hunt the exact species the contract names; the field re-spawns beasts over time
+      const mo = this.missionMonster(b);
+      if (mo) {
+        const d = Math.hypot(mo.x - b.x, mo.z - b.z);
+        if (d < 90) { b.goal = { x: mo.x, z: mo.z }; b.state = 'travel'; return; }
+        b.goal = { x: mo.x + rand(-20, 20), z: mo.z + rand(-20, 20) }; b.state = 'travel'; return;
+      }
+      const tgt = this.missionTarget(q.id);
+      if (!tgt) { b.q = null; return; }
+      b.goal = { x: tgt.x, z: tgt.z }; b.state = 'travel';
+      return;
+    }
+    const tgt = poi(step.at ? step.at[0] : step.poi);
+    if (!tgt) { b.q = null; return; }
+    if (Math.hypot(tgt.x - b.x, tgt.z - b.z) > 26) { b.goal = { x: tgt.x + rand(-18, 18), z: tgt.z + rand(-18, 18) }; b.state = 'travel'; return; }
+    // arrived: do the thing for a few seconds, then tick one step of the contract
+    b.goal = null; b.state = 'work'; b.work = 'quest'; b.stateT = 4;
+    const before = qq.prog;
+    this.progress(q.id, 1, b);
+    if (qq.prog > before) q.step = Math.min(ms.length - 1, q.step + 1);
   }
 
   // ------------------------------------------------------------------ zone
@@ -619,6 +772,7 @@ export class BR {
     for (const f of this.feed) f.t -= dt;
     this.feed = this.feed.filter((f) => f.t > 0);
     this.lastPlayerPos.copy(p.pos);
+    markExplored(p.pos.x, p.pos.z, this.world.mapW);
     this.world.setFocus(p.pos.x, p.pos.z);
     this.zoneStep(dt);
     this.timeline(dt);
@@ -795,6 +949,14 @@ export class BR {
     for (const o of opts) { r -= o[1]; if (r <= 0) { w = o[0]; break; } }
     let tx = b.x, tz = b.z;
     const towns = POIS.filter((p) => inSafe(p.x, p.z) && p.id !== 'dodgeball' && p.id !== 'tree');
+    // the human's NPCs post real contracts: a bot that is *at* a town where one is offered can take it
+    if ((w === 'loot' || w === 'quest') && Math.random() < 0.55 * P.curio + 0.2) {
+      const here = POIS.find((p) => inSafe(p.x, p.z) && Math.hypot(p.x - b.x, p.z - b.z) < p.r + 40);
+      if (here) {
+        const cand = Object.keys(MISSIONS).find((id) => MISSIONS[id][0].poi === here.id && !this.quests.some((q) => q.id === id && q.owner === b));
+        if (cand && this.takeQuest(b, cand)) return;
+      }
+    }
     if (w === 'loot' || w === 'quest') {
       const cands = towns.filter((p) => !m.done.has(p.id)).sort(() => Math.random() - 0.5).slice(0, 5);
       cands.sort((a, c) => (c.tier * P.greed * 2 + rand(0, 2) - Math.hypot(c.x - b.x, c.z - b.z) / (260 + P.curio * 600)) - (a.tier * P.greed * 2 + rand(0, 2) - Math.hypot(a.x - b.x, a.z - b.z) / (260 + P.curio * 600)));
@@ -827,7 +989,7 @@ export class BR {
     const hurt = (f: number) => { b.hp -= b.maxHp * f; if (b.hp <= 0) { this.finalizeBot(b, null, 'was defeated on a mission'); return true; } return false; };
     switch (b.work) {
       case 'loot': case 'quest': {
-        // an NPC mission: harder towns pay better, but every task can be failed
+        // a side errand (the mission engine in questStep owns the real contracts)
         const p = poi(m.poi ?? POIS[0].id);
         if (!p || m.done.has(p.id)) { b.hp = Math.min(b.maxHp, b.hp + b.maxHp * 0.1); break; }
         const diff = 0.3 + p.tier * 0.17;
@@ -875,7 +1037,9 @@ export class BR {
       b.stateT -= dt;
       if (m.pact >= 0 && (m.pactT <= 0 || !this.bots[m.pact]?.alive)) m.pact = -1;
       if (b.state === 'flee') { if (m.fleeT <= 0) { b.state = 'work'; b.work = 'camp'; b.stateT = rand(8, 25); b.goal = null; } continue; }
-      if (!b.goal && b.state !== 'fight') this.chooseGoal(b);
+      // a live mission overrides the general "what should I do" roll
+      if (b.q) this.questStep(b);
+      if (!b.goal && b.state !== 'fight' && !b.q) this.chooseGoal(b);
       if (b.state === 'travel' || b.state === 'zone') {
         if (b.goal && Math.hypot(b.goal.x - b.x, b.goal.z - b.z) < 8) {
           b.state = 'work';
@@ -884,7 +1048,11 @@ export class BR {
         } else if (b.stateT < -110) { b.goal = null; b.stateT = 0; }
       } else if (b.state === 'work') {
         const z = this.zoneAt(this.t);
-        if (b.stateT <= 0) { this.finishWork(b); if (b.alive) { b.goal = null; this.chooseGoal(b); } }
+        if (b.stateT <= 0) {
+          // a bot on a contract must not drift into the generic "side errand" work loop
+          if (b.q) { b.state = 'travel'; b.stateT = 0; }
+          else { this.finishWork(b); if (b.alive) { b.goal = null; this.chooseGoal(b); } }
+        }
         else if (z.closing && Math.hypot(b.x, b.z) > z.r - 30) { b.goal = null; this.chooseGoal(b); }
         else if (b.work === 'camp' || b.work === 'ambush') b.hp = Math.min(b.maxHp, b.hp + b.maxHp * 0.006 * dt);
       } else if (b.state === 'fight') {
@@ -1370,9 +1538,10 @@ export class BR {
       ai.strafe = Math.random() < 0.5 ? -1 : 1;
       // dash: close the gap, sidestep when pressured, escape when hurt
       if (ai.dashCd <= 0 && f.dashCd <= 0 && f.energy > 40) {
-        if (dist > 12 && Math.random() < 0.35 * tempo) { g.dash(f, nx, nz); ai.dashCd = rand(1.0, 2.4); }
-        else if (dist < 5 && Math.random() < 0.2 * tempo) { g.dash(f, -nz * ai.strafe, nx * ai.strafe); ai.dashCd = rand(1.2, 2.6); }
-        else if (f.hp < f.maxHp * 0.45 && (f.st.hurtT ?? 0) > 4.3 && Math.random() < dodge * 0.9) { g.dash(f, -nx + -nz * ai.strafe * 0.5, -nz + nx * ai.strafe * 0.5); ai.dashCd = rand(1.5, 3); }
+        // same dash economy as the player (Game.DASH_CD_MUL): bots *decide* well, they do not out-run you
+        if (dist > 12 && Math.random() < 0.3 * tempo) { g.dash(f, nx, nz); ai.dashCd = rand(1.7, 2.9) / Math.max(0.7, tempo); }
+        else if (dist < 5 && Math.random() < 0.18 * tempo) { g.dash(f, -nz * ai.strafe, nx * ai.strafe); ai.dashCd = rand(1.8, 3.0); }
+        else if (f.hp < f.maxHp * 0.45 && (f.st.hurtT ?? 0) > 4.3 && Math.random() < dodge * 0.9) { g.dash(f, -nx + -nz * ai.strafe * 0.5, -nz + nx * ai.strafe * 0.5); ai.dashCd = rand(2.0, 3.4); }
       }
     }
     if (ai.jumpT <= 0 && f.onGround && f.stun <= 0) { ai.jumpT = rand(1.4, 4.2); if (Math.random() < 0.3 + 0.35 * skill) this.hop(f, s, Math.random() < 0.6); }
@@ -1404,6 +1573,13 @@ export class BR {
     if (b.react > 0) b.react -= dt;
     this.botCards(b, f, !!(b.tgt && !b.tgt.dead));
     const t = b.tgt && !b.tgt.dead ? b.tgt : null;
+    // a bot on a mission only picks fights that advance it: the wanted beasts, or whatever attacks it first
+    if (t && b.q && t !== b.f && !(b.f && (b.f.st.hurtT ?? 0) > 0)) {
+      const want = this.missionMon(b.q.id);
+      const name = (t.def?.name ?? '').toLowerCase();
+      const isMon = t !== this.g.player && t.isPlayer === false && t.team !== b.f?.team;
+      if (want && isMon && !name.includes(want) && b.tgtT > 0.05) b.tgt = null;
+    }
     const lowHp = f.hp < f.maxHp * (0.18 + 0.3 * b.pers.healAt);
     const dT = t ? Math.hypot(t.pos.x - f.pos.x, t.pos.z - f.pos.z) : 999;
     // healing channel (R): only when nobody is close
@@ -1426,7 +1602,7 @@ export class BR {
       if (lowHp && b.pers.caution > 0.4 && !b.ally) {
         b.fleeing = 1.5; const [sx, sz] = this.steer(f, -dx, -dz, s, true); f.moveInput.set(sx, sz); f.targetYaw = Math.atan2(-dz, -dx) + Math.PI / 2;
         f.targetYaw = Math.atan2(sx, sz); s.want = true;
-        if (f.ai.dashCd <= 0 && f.dashCd <= 0 && f.energy > 30) { g.dash(f, sx, sz); f.ai.dashCd = rand(0.9, 1.8); this.say(b, 'flee', 0.5); }
+        if (f.ai.dashCd <= 0 && f.dashCd <= 0 && f.energy > 30) { g.dash(f, sx, sz); f.ai.dashCd = rand(1.8, 3.0); this.say(b, 'flee', 0.5); }
         else if (f.ai.jumpT <= 0 && Math.random() < dt * 0.8) { this.hop(f, s, true); f.ai.jumpT = rand(0.8, 1.6); }
         return;
       }
@@ -1457,7 +1633,7 @@ export class BR {
         f.moveInput.set(sx, sz); f.targetYaw = Math.atan2(sx, sz); s.want = true;
         // fast travel like a real player: bunny-hop and dash along the path
         if (sprint && d > 30 && f.onGround && f.ai.jumpT <= 0 && Math.random() < dt * 1.2) { this.hop(f, s, false); f.ai.jumpT = rand(0.5, 1.2); }
-        if (sprint && d > 45 && f.dashCd <= 0 && f.energy > 60 && f.ai.dashCd <= 0 && f.stun <= 0 && f.lock <= 0) { g.dash(f, sx, sz); f.ai.dashCd = rand(1.2, 2.8); }
+        if (sprint && d > 45 && f.dashCd <= 0 && f.energy > 60 && f.ai.dashCd <= 0 && f.stun <= 0 && f.lock <= 0) { g.dash(f, sx, sz); f.ai.dashCd = rand(2.4, 4.0); }
       }
     }
     // pick up cards walked over
@@ -1629,11 +1805,17 @@ export class BR {
       return;
     }
     const cq = this.champs.get(v);
-    if (cq && by?.isPlayer) { this.progress(cq, 1); this.feedAdd(`You defeated ${v.name}!`, '#ffd24a'); }
+    if (cq) {
+      const owner = cq.owner;
+      if ((owner && by && this.botOf(by) === owner) || (!owner && by?.isPlayer)) {
+        if (owner) this.progress(cq.qid, 1, owner); else this.progress(cq.qid, 1);
+        this.feedAdd(`${by?.isPlayer ? 'You' : by?.name ?? 'Someone'} defeated ${v.name}!`, '#ffd24a');
+      }
+    }
     if (v.st.hunt) { if (by?.isPlayer && !cq) { this.addJenny(2500); this.addCard(rollCard(2, this.luck, 0.4)); this.kills++; this.feedAdd(`You defeated a Bomber Hunter`, '#7dff9a'); } g.fx.explosion(v.chestPos(), 0xff6a2a, 2.5, 0.4); }
   }
-  champs = new Map<Fighter, string>();
-  private spawnChampion(name: string, p: Poi, qid: string) {
+  champs = new Map<Fighter, { qid: string; owner: Bot | null }>();
+  private spawnChampion(name: string, p: Poi, qid: string, owner: Bot | null = null) {
     const g = this.g;
     const q = this.freeNear(p.x + 6, p.z - p.r * 0.62 + 20, 2);
     const f = g.spawn(pick(ALL_KINDS), 'hunter', false, 0);
@@ -1642,10 +1824,26 @@ export class BR {
     f.maxHp = f.hp = Math.round(def.hp * 1.4);
     const ai = g.makeAI('rival', f); ai.type = 'bot'; ai.active = true; ai.tempo = 1.15; ai.aggr = 0.8; ai.dodge = 0.5; f.ai = ai; f.st.hunt = 1;
     f.addMarker(0xffd24a); g.createLabel(f); if (f.labelName) f.labelName.textContent = '★ ' + name;
-    this.champs.set(f, qid);
-    this.toast(`${name} awaits at the Antokiba colosseum!`, '#ffd24a');
+    this.champs.set(f, { qid, owner });
+    if (owner) this.feedAdd(`${name} takes the colosseum floor for ${owner.name}`, '#ffd24a');
+    else this.toast(`${name} awaits at the Antokiba colosseum!`, '#ffd24a');
   }
   private botOrFighter(f: Fighter): Bot | Fighter { return f.st.botId !== undefined ? this.bots[f.st.botId] : f; }
+  /** every open mission that asked for this beast (yours first, then each bot's own contract) */
+  private creditKill(monId: string, by: Fighter | null) {
+    const who = by ? this.botOf(by) : null;
+    for (const q of [...this.quests]) {
+      if (q.done || q.owner !== who) continue;
+      const want = this.missionMon(q.id);
+      if (!want || !monId.includes(want)) continue;
+      const ms = MISSIONS[q.id];
+      const step = ms?.find((m) => m.kind === 'kill');
+      if (!step) continue;
+      this.progress(q.id, 1, who);
+    }
+  }
+  /** the bot behind a field fighter (their own body or a summon they control) */
+  private botOf(f: Fighter): Bot | null { return f.st.botId !== undefined ? (this.bots[f.st.botId] ?? null) : null; }
   private monsterDown(m: MonSp, by: Fighter | null) {
     const g = this.g;
     m.alive = false;
@@ -1657,6 +1855,7 @@ export class BR {
     g.fx.explosion(V(pos.x, 2, pos.z), 0xffd24a, 3, 0.5);
     const mine = !!by && (by.isPlayer || by.team === 'player');
     if (mine) { this.monsKilled++; g.gainXp(d.xp, 0); this.addJenny(rand(d.jenny[0], d.jenny[1])); if (d.id === 'cyclops') this.progress('cyclops', 1); if (d.id === 'captain') this.progress('pirates', 1); }
+    this.creditKill(d.id, by);
     if (d.drop) {
       const n = d.drop.n;
       for (let i = 0; i < n; i++) {
@@ -1764,10 +1963,13 @@ export class BR {
       { id: 'buy_atlas', label: 'Greed Island Atlas', sub: `${J(this.price(14000))} · full atlas: biomes, roads, towns, dungeons and rare sites`, disabled: this.mapLevel >= 2 || this.jenny < this.price(14000) },
     ];
   }
+  /** when the current dialog was opened – a tap that opened it must not instantly dismiss it (see DialogView) */
+  dialogAt = 0;
   openDialog(npc: string) {
     this.dialogNpc = npc;
+    this.dialogAt = performance.now();
     const J = (n: number) => n.toLocaleString() + ' J';
-    if (npc.startsWith('cartog')) { this.dialog = { id: 'cartog', npc: 'Cartographer', title: 'Island Cartographer', text: `Without a map you are walking blind. I sell two: a rough Chart, and the complete Atlas. You have ${J(this.jenny)}.`, opts: [...this.mapOpts(), { id: 'bye', label: 'Leave' }] }; this.g.paused = false; sfx('ui'); return; }
+    if (npc.startsWith('cartog')) { this.dialog = { id: 'cartog', npc: 'Cartographer', title: 'Island Cartographer', text: `Without a map you are walking blind. I sell two: a rough Chart, and the complete Atlas. You have ${J(this.jenny)}.`, opts: [...this.mapOpts(), { id: 'bye', label: 'Leave' }] }; this.g.paused = false; this.g.mouseLockOff(); sfx('ui'); return; }
     switch (npc) {
       case 'eta': this.dialog = { id: 'eta', npc: 'Eta', title: 'Eta · Game Master', text: 'Welcome to Greed Island! Nothing lies around for free – cards come from missions, monsters, rare vaults and rivals. Cards are everything here: Specified Slot cards (items, creatures, passives) and Spell Cards (tactics). The Nen Barrier rises at 20:00 and the game ends at 50:00 — until then, explore, trade and take on missions. Need a push?', opts: [{ id: 'q_orient', label: 'Mission: collect 3 cards' }, { id: 'tips', label: 'Any tips?' }, { id: 'bye', label: 'Goodbye' }] }; break;
       case 'trade': this.dialog = { id: 'trade', npc: 'Trade', title: 'Antokiba Trade Shop', text: `I buy cards for Jenny. You have ${J(this.jenny)}.`, opts: this.sellOpts() }; break;
@@ -1786,7 +1988,7 @@ export class BR {
     }
     const xn = EXTRA_NPCS.find((n) => n.id === npc);
     if (xn) { const q = this.quests.find((k) => k.id === xn.quest); const st = q ? (q.done ? 'Thanks again, hunter!' : `Progress: ${q.prog}/${q.goal}.`) : xn.text; this.dialog = { id: npc, npc: xn.name.split(' ')[0], title: xn.name, text: st, opts: [...(q ? [] : [{ id: 'q_' + xn.quest, label: 'Accept: ' + QUESTS[xn.quest].title, sub: 'Reward: ' + QUESTS[xn.quest].reward }]), { id: 'bye', label: 'Goodbye' }] }; }
-    if (this.dialog) { this.g.paused = false; sfx('ui'); }
+    if (this.dialog) { this.g.paused = false; this.g.mouseLockOff(); sfx('ui'); }
   }
   private sellOpts(): DialogOpt[] {
     const uniq = [...new Set(this.inv.filter((c) => c !== 's100' && c !== 's101'))].sort((a, b) => RANK_VALUE[this.rank(b)] - RANK_VALUE[this.rank(a)]).slice(0, 7);
@@ -1799,8 +2001,8 @@ export class BR {
   get uiBlocking() { return !!this.dialog || this.mapOpen || !!this.trade; }
   get mapLevel() { return this.mapLevelOf(this.inv); }
   toggleMap() {
-    if (!this.mapOpen && this.mapLevel === 0) { this.toast('You carry no map card! Buy an Island Chart at a Trade Shop or cartographer, or take one from a rival.', '#ffcf8a'); sfx('ui'); return; }
     this.mapOpen = !this.mapOpen; sfx('ui');
+    if (this.mapOpen && this.mapLevel === 0) this.toast('Local map only — you can see where you have walked. An Island Chart or Atlas widens the view (Trade Shops, the Cartographer, or loot a rival).', '#ffcf8a');
   }
   acceptTrade() { const t = this.trade; if (!t) return; if (this.has(t.want) && t.bot.inv.includes(t.give)) { this.removeCard(t.want); t.bot.inv.splice(t.bot.inv.indexOf(t.give), 1); t.bot.inv.push(t.want); this.addCard(t.give, true); this.toast(`Traded ${CARDS[t.want].name} for ${CARDS[t.give].name}`, '#7dff9a'); this.say(t.bot, 'loot'); } this.trade = null; }
   declineTrade() { this.trade = null; }
@@ -2260,6 +2462,20 @@ export class BR {
     }
     const it = this.nearestInteract();
     const prompt = it && !this.dialog ? { text: it.text, key: 'E' } : null;
+    this.nearIt = it;
+    // explorer's reputation (Greed Island "Listen"): bots you meet tell the rest of the island where you are
+    if (this.mapLevel > 0 && (p.st.hurtT ?? 0) <= 0) this.repAcc += 1 / 60;
+    else this.repAcc = Math.max(0, this.repAcc - 1 / 90);
+    if (this.repAcc >= 1) {
+      this.repAcc -= 1;
+      const lvl = this.mapLevel;
+      for (const b of this.bots) {
+        if (!b.alive || b.ally) continue;
+        const d = Math.hypot(b.x - px, b.z - pz);
+        const chance = lvl >= 2 ? 0.55 : 0.3;
+        if (d > (lvl >= 2 ? 3200 : 1900) && Math.random() < chance) (this.mem(b).known as Map<number, { x: number; z: number; t: number }>).set(-1, { x: px, z: pz, t: this.t });
+      }
+    }
     const effects: BrHudState['effects'] = [];
     const eff = (k: string, name: string, color: string, max: number) => { const v = p.st[k] ?? 0; if (v > 0) effects.push({ name, t: v, max, color }); };
     eff('stealthT', 'Stealth', '#c0c0ff', 20); eff('reflectT', 'Reflect', '#9fe8ff', 8); eff('barrierImmT', 'Barrier Immune', '#c8a0ff', 25); eff('bridgeT', 'Drawbridge', '#a0d0ff', 60);

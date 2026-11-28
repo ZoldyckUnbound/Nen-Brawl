@@ -11,6 +11,8 @@ export interface Ctx {
   R: () => number;
   gy: number;
   indoor: (x: number, z: number) => void;
+  /** register a street lamp / lantern so the world can pool a real point light on it */
+  lampAdd: (x: number, y: number, z: number, col: number) => void;
   claim: (x: number, z: number, r: number) => boolean;
   tree: (x: number, z: number, s: number, kind: number) => void;
   geo: Record<string, THREE.BufferGeometry>;
@@ -59,7 +61,19 @@ const WOOD = [0x6b4a2a, 0x5a3c22, 0x7a5632];
 const RF = [0xb5473a, 0x9a3a2a, 0xc2603f, 0x8a4a3a, 0x7a3a3a];
 
 // ----------------------------------------------------------------- reusable furniture
-export function lamp(c: Ctx, x: number, z: number, col = 0xffe29a) { const l = new Loc(c, x, z, 0); l.cyl(0, 0, 0, 0.3, 4.2, 0.3, 0x2f2f38); l.box(0, 4.0, 0, 0.9, 0.12, 0.9, 0x2f2f38); l.sph(0, 4.15, 0, 0.8, 0.9, 0.8, col, 2.4); c.circle(x, z, 0.3, 4); }
+export function lamp(c: Ctx, x: number, z: number, col = 0xffe29a) {
+  const l = new Loc(c, x, z, 0);
+  // iron post + arm + a glass lantern with a warm (not blown-out) mantle inside
+  l.cyl(0, 0, 0, 0.3, 4.2, 0.3, 0x2f2f38);
+  l.box(0, 4.0, 0, 0.9, 0.12, 0.9, 0x2f2f38);
+  l.box(0, 3.86, 0, 0.62, 0.06, 0.62, 0x1c1c22);
+  l.sph(0, 4.18, 0, 0.62, 0.72, 0.62, col, 1.05);
+  l.cone(0, 4.72, 0, 0.86, 0.5, 0.86, 0x2a2a30);
+  // a soft ground splash: the light landing on the cobbles, not a screen effect
+  l.disc(0, 0, 2.3, col, 0.09);
+  c.lampAdd(x, 4.15, z, col);
+  c.circle(x, z, 0.3, 4);
+}
 export function fountain(c: Ctx, x: number, z: number, r = 5, water = 0x6ad0ff) {
   const l = new Loc(c, x, z, 0);
   l.cyl(0, 0, 0, r * 2.2, 0.9, r * 2.2, 0xc9c3b4); l.cyl(0, 0.9, 0, r * 1.9, 0.12, r * 1.9, water, 0.8);
@@ -76,12 +90,15 @@ export function windows(b: Loc, w: number, d: number, floors: number, fh: number
     const x = (i - (n - 1) / 2) * (w / n);
     if (f === 0 && Math.abs(x) < 1.4) continue;
     const y = y0 + f * fh;
-    b.box(x, y, d / 2 + 0.02, 1.3, 1.5, 0.12, frame); b.box(x, y + 0.12, d / 2 + 0.06, 0.95, 1.2, 0.1, 0x35506c);
+    b.box(x, y, d / 2 + 0.02, 1.3, 1.5, 0.12, frame);
+    // glass is a deep blue by day; about one window in three has a lamp burning behind it
+    const lit = b.c.R() < 0.34;
+    b.box(x, y + 0.12, d / 2 + 0.06, 0.95, 1.2, 0.1, lit ? 0xffd08a : 0x35506c, lit ? 0.55 : 0);
     b.box(x, y + 0.65, d / 2 + 0.07, 0.08, 1.15, 0.1, frame);
     if (shutter) { b.box(x - 0.95, y, d / 2 + 0.08, 0.4, 1.5, 0.08, shutter); b.box(x + 0.95, y, d / 2 + 0.08, 0.4, 1.5, 0.08, shutter); }
     if (f === 0 && c3(b)) b.box(x, y - 0.35, d / 2 + 0.3, 1.5, 0.3, 0.5, 0x6b4a2a);
   }
-  if (side) { const m = Math.max(1, Math.floor(d / 4)); for (let f = 0; f < floors; f++) for (let i = 0; i < m; i++) { const z = (i - (m - 1) / 2) * (d / m); const y = y0 + f * fh; for (const s of [-1, 1]) { b.box(s * (w / 2 + 0.02), y, z, 0.12, 1.5, 1.2, frame); b.box(s * (w / 2 + 0.06), y + 0.1, z, 0.1, 1.2, 0.9, 0x35506c); } } }
+  if (side) { const m = Math.max(1, Math.floor(d / 4)); for (let f = 0; f < floors; f++) for (let i = 0; i < m; i++) { const z = (i - (m - 1) / 2) * (d / m); const y = y0 + f * fh; for (const s of [-1, 1]) { b.box(s * (w / 2 + 0.02), y, z, 0.12, 1.5, 1.2, frame); const lit = b.c.R() < 0.3; b.box(s * (w / 2 + 0.06), y + 0.1, z, 0.1, 1.2, 0.9, lit ? 0xffd08a : 0x35506c, lit ? 0.5 : 0); } } }
 }
 const c3 = (b: Loc) => b.c.R() < 0.18;
 export function door(b: Loc, d: number, col = 0x4a2f1c, frame = 0xe8dcc0, w = 1.8) { b.box(0, 0, d / 2 + 0.04, w + 0.5, 2.7, 0.14, frame); b.box(0, 0, d / 2 + 0.1, w, 2.5, 0.12, col); b.sph(w * 0.3, 1.1, d / 2 + 0.2, 0.18, 0.18, 0.18, 0xffd24a); b.box(0, -0.0, d / 2 + 0.7, w + 1, 0.22, 1.2, 0x9a948a); }
